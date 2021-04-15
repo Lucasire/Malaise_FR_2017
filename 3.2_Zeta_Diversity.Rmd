@@ -1,0 +1,671 @@
+---
+title: "2.3climtree_FRG_zeta"
+author: "cai wang"
+date: "8/30/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+#if not special command, the library can install by function install.library.
+library(tidyverse)
+library(vegan)
+library(zetadiv)
+library(here)
+```
+
+```{r read data}
+env<-read.csv("../data/20200827/env_fr_0827.csv")
+otu.co<-read.csv("../data/20200827/Coleoptera_0827.csv")
+otu.di<-read.csv("../data/20200827/Diptera_0827.csv")
+otu.he<-read.csv("../data/20200827/Hemiptera_0827.csv")
+otu.hy<-read.csv("../data/20200827/Hymenoptera_0827.csv")
+otu.le<-read.csv("../data/20200827/Lepidoptera_0827.csv")
+otu.Flo<-read.csv("../data/20200827/Floricolous_0827.csv")
+otu.NoFlo<-read.csv("../data/20200827/Non_Floricolous_0827.csv")
+otu.Par<-read.csv("../data/20200827/Parasitoids_0827.csv")
+otu.NoPar<-read.csv("../data/20200827/Non_Parasitoids_0827.csv")
+```
+
+```{r format data}
+env.small<- env %>% dplyr::select(plot,site,alt,classe_depe,type,divtot.dmh.relasc,Bmtot.relasc,PC.ouv.densio,densite.TGB.relasc,nb.tree.sp.relasc,Gtot.relasc)#,prop.affaiblis.archi
+#env.small=arrange(env.small,plot)
+community<- env %>% dplyr::select(starts_with("OTU"))
+communityB <- community[, which(specnumber(community, MARGIN=2) > 1)]
+
+#whole data
+data.env<- env.small %>% dplyr::select(alt,divtot.dmh.relasc,Bmtot.relasc,PC.ouv.densio,densite.TGB.relasc,nb.tree.sp.relasc,Gtot.relasc)#,prop.affaiblis.archi
+data.env <- data.frame(scale(apply(data.env,2,as.numeric)))
+#XX<-cor(data.env)
+#kappa(XX,exact=TRUE)
+xy<- env %>% dplyr::select(c(lat,lon))
+##check
+XX<-cor(data.env)
+kappa(XX,exact=TRUE) #if >1000, There are severe multicollinearity
+
+#Aure
+community.A<- env %>% dplyr::filter(env.small$site=="Aure")%>% dplyr::select(starts_with("OTU"))
+community.A[community.A>1] <- 1 
+communityB.A <- community.A[, which(specnumber(community.A, MARGIN=2) > 1)]
+xy.A<- env %>% dplyr::filter(env$site=="Aure") %>% dplyr::select(c(lat,lon))
+xy.A<-data.frame(xy.A)
+data.env.A<- data.env  %>% dplyr::filter(env.small$site=="Aure") 
+data.env.A <- data.frame(scale(apply(data.env.A,2,as.numeric)))
+XX<-cor(data.env.A)
+kappa(XX,exact=TRUE) #if >1000, There are severe multicollinearity
+
+#Sault
+community.S<- env %>% dplyr::filter(env.small$site=="Sault")%>% dplyr::select(starts_with("OTU"))
+community.S[community.S>1] <- 1 
+communityB.S <- community.S[, which(specnumber(community.S, MARGIN=2) > 1)]
+xy.S<- env %>% dplyr::filter(env.small$site=="Sault") %>% dplyr::select(c(lat,lon))
+xy.S<-data.frame(xy.S)
+data.env.S<- data.env  %>% dplyr::filter(env.small$site=="Sault") 
+data.env.S <- data.frame(scale(apply(data.env.S,2,as.numeric)))
+XX<-cor(data.env.S)
+kappa(XX,exact=TRUE) #if >1000, There are severe multicollinearity
+```
+
+```{r zeta dataset set up}
+zdata.env=data.env
+str(zdata.env)
+zxy=xy
+zcommunityB=communityB
+```
+
+#Figure3
+```{r Figure3 zeta decline}
+##expected zeta
+set.seed(1)
+zeta.decline.fine.ex <- Zeta.decline.ex(zcommunityB, orders = 1:56,
+plot = FALSE)
+zeta.decline.fine.ex
+##non-directional nearest neighbour (NON) zeta
+set.seed(1)
+zeta.decline.fine1000.NON <- Zeta.decline.mc(zcommunityB, zxy, orders =
+1:56, sam = 2000, NON = TRUE, plot = FALSE)
+zeta.decline.fine1000.NON
+
+par(mfrow = c(2,2),mar=c(5,4.5,4,2))
+##plot the zeta decline for the expected zeta
+plot(zeta.decline.fine.ex$zeta.order, zeta.decline.fine.ex$zeta.val,
+xlab = "Zeta order", ylab = "Zeta-diversity", pch = 20, ylim = c(0,
+zeta.decline.fine.ex$zeta.val[1] +
+zeta.decline.fine.ex$zeta.val.sd[1]), main = "Zeta-diversity decline",col="forestgreen",cex.lab=2,cex.main=2)
+lines(zeta.decline.fine.ex$zeta.order,
+zeta.decline.fine.ex$zeta.val,col="forestgreen")
+lines(zeta.decline.fine.ex$zeta.order, zeta.decline.fine.ex$zeta.val
++ zeta.decline.fine.ex$zeta.val.sd, lty = 2,col="forestgreen")
+lines(zeta.decline.fine.ex$zeta.order, zeta.decline.fine.ex$zeta.val
+- zeta.decline.fine.ex$zeta.val.sd, lty = 2,col="forestgreen")
+##plot the zeta ratio for the expected zeta
+plot(zeta.decline.fine.ex$zeta.order[1:(length(zeta.decline.fine.ex$
+zeta.order) - 1)], zeta.decline.fine.ex$ratio, pch = 20, xlab =
+"Zeta order", ylab = "Zeta-ratio", main = "Ratio of zeta-diversity
+decline",col="forestgreen",ylim=c(0,1),cex.lab=2,cex.main=2)
+lines(zeta.decline.fine.ex$zeta.order[1:(length(zeta.decline.fine.ex
+$zeta.order) - 1)], zeta.decline.fine.ex$ratio,col="forestgreen")
+##plot the zeta decline in a log scale for the expected zeta
+plot(zeta.decline.fine.ex$zeta.order, zeta.decline.fine.ex$zeta.val,
+log = "y", pch = 20, xlab = "Zeta order", ylab = "Zeta-diversity",
+main = "Exponential regression",col="forestgreen",cex.lab=2,cex.main=2)
+lines(zeta.decline.fine.ex$zeta.order,
+10^predict.lm(zeta.decline.fine.ex$zeta.exp,
+data.frame(zeta.decline.fine.ex$zeta.order)),col="forestgreen")
+##plot the zeta decline in a log-log scale for the expected zeta
+plot(zeta.decline.fine.ex$zeta.order, zeta.decline.fine.ex$zeta.val,
+log = "xy", pch = 20, xlab = "Zeta order", ylab = "Zeta-diversity",
+main = "Power law regression",col="forestgreen",cex.lab=2,cex.main=2)
+lines(zeta.decline.fine.ex$zeta.order,
+10^predict.lm(zeta.decline.fine.ex$zeta.pl,
+data.frame(zeta.decline.fine.ex$zeta.order)),col="forestgreen")
+
+##plot the zeta decline for the NON subsampling scheme
+par(mfrow = c(2,2),mar=c(5,4.5,4,2))
+plot(zeta.decline.fine1000.NON$zeta.order,
+zeta.decline.fine1000.NON$zeta.val, xlab = "Zeta order", ylab =
+"Zeta-diversity", pch = 20, ylim = c(0,
+zeta.decline.fine1000.NON$zeta.val[1] +
+zeta.decline.fine1000.NON$zeta.val.sd[1]), main = "Zeta-diversity
+decline",col="forestgreen",cex.lab=2,cex.main=2)
+lines(zeta.decline.fine1000.NON$zeta.order,
+zeta.decline.fine1000.NON$zeta.val,col="forestgreen")
+lines(zeta.decline.fine1000.NON$zeta.order,
+zeta.decline.fine1000.NON$zeta.val +
+zeta.decline.fine1000.NON$zeta.val.sd, lty = 2,col="forestgreen")
+lines(zeta.decline.fine1000.NON$zeta.order,
+zeta.decline.fine1000.NON$zeta.val -
+zeta.decline.fine1000.NON$zeta.val.sd, lty = 2,col="forestgreen")
+##plot the zeta ratio for the NON subsampling scheme
+plot(zeta.decline.fine1000.NON$zeta.order[1:(length(zeta.decline.fine1000.NON$zeta.order) - 1)], zeta.decline.fine1000.NON$ratio, pch =20, xlab = "Zeta order", ylab = "Zeta-ratio", main = "Ratio of zeta-diversity\ndecline",col="forestgreen",ylim=c(0,1),cex.lab=2,cex.main=2)
+lines(zeta.decline.fine1000.NON$zeta.order[1:(length(zeta.decline.fine1000.NON$zeta.order) - 1)],zeta.decline.fine1000.NON$ratio,col="forestgreen")
+##plot the zeta decline in a log scale for the NON subsampling scheme
+plot(zeta.decline.fine1000.NON$zeta.order,zeta.decline.fine1000.NON$zeta.val, log = "y", pch = 20, xlab =
+"Zeta order", ylab = "Zeta-diversity", main = "Exponential regression",col="forestgreen",cex.lab=2,cex.main=2)
+lines(zeta.decline.fine1000.NON$zeta.order,10^predict.lm(zeta.decline.fine1000.NON$zeta.exp,data.frame(zeta.decline.fine1000.NON$zeta.order)),col="forestgreen")
+##plot the zeta decline in a log-log scale for the NON subsampling scheme
+plot(zeta.decline.fine1000.NON$zeta.order,zeta.decline.fine1000.NON$zeta.val, log = "xy", pch = 20, xlab = "Zeta order", ylab = "Zeta-diversity", main = "Power law regression",col="forestgreen",cex.lab=2,cex.main=2)
+lines(zeta.decline.fine1000.NON$zeta.order,10^predict.lm(zeta.decline.fine1000.NON$zeta.pl, data.frame(zeta.decline.fine1000.NON$zeta.order)),col="forestgreen")
+```
+
+#Figure5:zeta ratio for tax and function group
+
+```{r make tax group}
+Coleoptera<- otu.co %>% dplyr::select(starts_with("OTU"))
+Coleoptera <- Coleoptera[, which(specnumber(Coleoptera, MARGIN=2) > 1)]
+Diptera<- otu.di %>% dplyr::select(starts_with("OTU"))
+Diptera <- Diptera[, which(specnumber(Diptera, MARGIN=2) > 1)]
+Hemiptera<- otu.he %>% dplyr::select(starts_with("OTU"))
+Hemiptera <- Hemiptera[, which(specnumber(Hemiptera, MARGIN=2) > 1)]
+Hymenoptera<- otu.hy %>% dplyr::select(starts_with("OTU"))
+Hymenoptera <- Hymenoptera[, which(specnumber(Hymenoptera, MARGIN=2) > 1)]
+Lepidoptera <- otu.le %>% dplyr::select(starts_with("OTU"))
+Lepidoptera <- Lepidoptera[, which(specnumber(Lepidoptera, MARGIN=2) > 1)]
+
+Coleoptera.h <-Coleoptera %>% dplyr::filter(otu.co$classe_depe=="high")
+Diptera.h <-Diptera %>% dplyr::filter(otu.di$classe_depe=="high")
+Hemiptera.h <-Hemiptera %>% dplyr::filter(otu.he$classe_depe=="high")
+Hymenoptera.h <-Hymenoptera %>% dplyr::filter(otu.hy$classe_depe=="high")
+Lepidoptera.h <-Lepidoptera %>% dplyr::filter(otu.le$classe_depe=="high")
+
+Coleoptera.m <-Coleoptera %>% dplyr::filter(otu.co$classe_depe=="medium")
+Diptera.m <-Diptera %>% dplyr::filter(otu.di$classe_depe=="medium")
+Hemiptera.m <-Hemiptera %>% dplyr::filter(otu.he$classe_depe=="medium")
+Hymenoptera.m <-Hymenoptera %>% dplyr::filter(otu.hy$classe_depe=="medium")
+Lepidoptera.m <-Lepidoptera %>% dplyr::filter(otu.le$classe_depe=="medium")
+
+Coleoptera.l <-Coleoptera %>% dplyr::filter(otu.co$classe_depe=="low")
+Diptera.l <-Diptera %>% dplyr::filter(otu.di$classe_depe=="low")
+Hemiptera.l <-Hemiptera %>% dplyr::filter(otu.he$classe_depe=="low")
+Hymenoptera.l <-Hymenoptera %>% dplyr::filter(otu.hy$classe_depe=="low")
+Lepidoptera.l <-Lepidoptera %>% dplyr::filter(otu.le$classe_depe=="low")
+```
+
+```{r make function group}
+Floricolous<- otu.Flo %>% dplyr::select(starts_with("OTU"))
+Floricolous <- Floricolous[, which(specnumber(Floricolous, MARGIN=2) > 1)]
+N.Floricolous<- otu.NoFlo %>% dplyr::select(starts_with("OTU"))
+N.Floricolous <- N.Floricolous[, which(specnumber(N.Floricolous, MARGIN=2) > 1)]
+Parasitoids<- otu.Par %>% dplyr::select(starts_with("OTU"))
+Parasitoids <- Parasitoids[, which(specnumber(Parasitoids, MARGIN=2) > 1)]
+N.Parasitoids<- otu.NoPar %>% dplyr::select(starts_with("OTU"))
+N.Parasitoids <- N.Parasitoids[, which(specnumber(N.Parasitoids, MARGIN=2) > 1)]
+
+Floricolous.h <-Floricolous %>% dplyr::filter(otu.Flo$classe_depe=="high")
+N.Floricolous.h <-N.Floricolous %>% dplyr::filter(otu.NoFlo$classe_depe=="high")
+Parasitoids.h <-Parasitoids %>% dplyr::filter(otu.Par$classe_depe=="high")
+N.Parasitoids.h <-N.Parasitoids %>% dplyr::filter(otu.NoPar$classe_depe=="high")
+
+Floricolous.m <-Floricolous %>% dplyr::filter(otu.Flo$classe_depe=="medium")
+N.Floricolous.m <-N.Floricolous %>% dplyr::filter(otu.NoFlo$classe_depe=="medium")
+Parasitoids.m <-Parasitoids %>% dplyr::filter(otu.Par$classe_depe=="medium")
+N.Parasitoids.m <-N.Parasitoids %>% dplyr::filter(otu.NoPar$classe_depe=="medium")
+
+Floricolous.l <-Floricolous %>% dplyr::filter(otu.Flo$classe_depe=="low")
+N.Floricolous.l <-N.Floricolous %>% dplyr::filter(otu.NoFlo$classe_depe=="low")
+Parasitoids.l <-Parasitoids %>% dplyr::filter(otu.Par$classe_depe=="low")
+N.Parasitoids.l <-N.Parasitoids %>% dplyr::filter(otu.NoPar$classe_depe=="low")
+```
+
+```{r zeta.decline for figure5}
+#low
+
+##expected zeta all
+set.seed(1)
+zeta.decline.fine.ex.l <- Zeta.decline.ex(communityB, orders = 1:18,
+plot = FALSE)
+zeta.decline.fine.ex.l #~AIC= (pl:-68.757249)-(exp:1.010042)
+##expected zeta
+set.seed(1)
+zeta.Coleoptera.l <- Zeta.decline.ex(Coleoptera.l, orders = 1:18,
+plot = FALSE)
+set.seed(1)
+zeta.Diptera.l <- Zeta.decline.ex(Diptera.l, orders = 1:18,
+plot = FALSE)
+set.seed(1)
+zeta.Hemiptera.l <- Zeta.decline.ex(Hemiptera.l, orders = 1:18,
+plot = FALSE)
+set.seed(1)
+zeta.Hymenoptera.l <- Zeta.decline.ex(Hymenoptera.l, orders = 1:18,
+plot = FALSE)
+set.seed(1)
+zeta.Lepidoptera.l <- Zeta.decline.ex(Lepidoptera.l, orders = 1:18,
+plot = FALSE)
+####functional group
+zeta.Floricolous.l <- Zeta.decline.ex(Floricolous.l, orders = 1:18,
+plot = FALSE)
+set.seed(1)
+zeta.N.Floricolous.l <- Zeta.decline.ex(N.Floricolous.l, orders = 1:18,
+plot = FALSE)
+set.seed(1)
+zeta.Parasitoids.l <- Zeta.decline.ex(Parasitoids.l, orders = 1:18,
+plot = FALSE)
+set.seed(1)
+zeta.N.Parasitoids.l <- Zeta.decline.ex(N.Parasitoids.l, orders = 1:18,
+plot = FALSE)
+
+
+#medium
+set.seed(1)
+zeta.decline.fine.ex.m <- Zeta.decline.ex(communityB, orders = 1:15,
+plot = FALSE)
+zeta.decline.fine.ex.m #~AIC= (pl:51.69)-(exp:16.03)= 35.66 DF=3
+set.seed(1)
+zeta.Coleoptera.m <- Zeta.decline.ex(Coleoptera.m, orders = 1:15,
+plot = FALSE)
+set.seed(1)
+zeta.Diptera.m <- Zeta.decline.ex(Diptera.m, orders = 1:15,
+plot = FALSE)
+set.seed(1)
+zeta.Hemiptera.m <- Zeta.decline.ex(Hemiptera.m, orders = 1:15,
+plot = FALSE)
+set.seed(1)
+zeta.Hymenoptera.m <- Zeta.decline.ex(Hymenoptera.m, orders = 1:15,
+plot = FALSE)
+set.seed(1)
+zeta.Lepidoptera.m <- Zeta.decline.ex(Lepidoptera.m, orders = 1:15,
+plot = FALSE)
+#functional
+zeta.Floricolous.m <- Zeta.decline.ex(Floricolous.m, orders = 1:15,
+plot = FALSE)
+set.seed(1)
+zeta.N.Floricolous.m <- Zeta.decline.ex(N.Floricolous.m, orders = 1:15,
+plot = FALSE)
+set.seed(1)
+zeta.Parasitoids.m <- Zeta.decline.ex(Parasitoids.m, orders = 1:15,
+plot = FALSE)
+set.seed(1)
+zeta.N.Parasitoids.m <- Zeta.decline.ex(N.Parasitoids.m, orders = 1:15,
+plot = FALSE)
+#high
+set.seed(1)
+zeta.decline.fine.ex.h <- Zeta.decline.ex(communityB, orders = 1:23,
+plot = FALSE)
+zeta.decline.fine.ex.h #~AIC= (pl:51.69)-(exp:16.03)
+##expected zeta
+set.seed(1)
+zeta.Coleoptera.h <- Zeta.decline.ex(Coleoptera.h, orders = 1:23,
+plot = FALSE)
+set.seed(1)
+zeta.Diptera.h <- Zeta.decline.ex(Diptera.h, orders = 1:23,
+plot = FALSE)
+set.seed(1)
+zeta.Hemiptera.h <- Zeta.decline.ex(Hemiptera.h, orders = 1:23,
+plot = FALSE)
+set.seed(1)
+zeta.Hymenoptera.h <- Zeta.decline.ex(Hymenoptera.h, orders = 1:23,
+plot = FALSE)
+set.seed(1)
+zeta.Lepidoptera.h <- Zeta.decline.ex(Lepidoptera.h, orders = 1:23,
+plot = FALSE)
+#functional
+zeta.Floricolous.h <- Zeta.decline.ex(Floricolous.h, orders = 1:23,
+plot = FALSE)
+set.seed(1)
+zeta.N.Floricolous.h <- Zeta.decline.ex(N.Floricolous.h, orders = 1:23,
+plot = FALSE)
+set.seed(1)
+zeta.Parasitoids.h <- Zeta.decline.ex(Parasitoids.h, orders = 1:23,
+plot = FALSE)
+set.seed(1)
+zeta.N.Parasitoids.h <- Zeta.decline.ex(N.Parasitoids.h, orders = 1:23,
+plot = FALSE)
+
+```
+
+```{r plot figure5}
+par(mfrow = c(1,1))
+#for using the ggplot, need to extract the values from the zeta.decline model 
+ratio<- data.frame(matrix(NA,583,ncol=5))
+colnames(ratio)<-c("order","ratio","Level","Group","Level.2")
+###order content
+oredr.l=rep(zeta.decline.fine.ex.l$zeta.order[1:(length(zeta.decline.fine.ex.l$zeta.order) - 1)],11)
+oredr.m=rep(zeta.decline.fine.ex.m$zeta.order[1:(length(zeta.decline.fine.ex.m$zeta.order) - 1)],11)
+oredr.h=rep(zeta.decline.fine.ex.h$zeta.order[1:(length(zeta.decline.fine.ex.h$zeta.order) - 1)],11)
+ratio$order=c(oredr.l,oredr.m,oredr.h)
+###ratio content
+ratio.l=c(zeta.decline.fine.ex.l$ratio,zeta.Coleoptera.l$ratio,zeta.Diptera.l$ratio,zeta.Hemiptera.l$ratio,zeta.Hymenoptera.l$ratio,zeta.Lepidoptera.l$ratio,zeta.Floricolous.l$ratio,zeta.N.Floricolous.l$ratio,zeta.Parasitoids.l$ratio,zeta.N.Parasitoids.l$ratio,zeta.decline.fine.ex.l$ratio)
+ratio.m=c(zeta.decline.fine.ex.m$ratio,zeta.Coleoptera.m$ratio,zeta.Diptera.m$ratio,zeta.Hemiptera.m$ratio,zeta.Hymenoptera.m$ratio,zeta.Lepidoptera.m$ratio,zeta.Floricolous.m$ratio,zeta.N.Floricolous.m$ratio,zeta.Parasitoids.m$ratio,zeta.N.Parasitoids.m$ratio,zeta.decline.fine.ex.m$ratio)
+ratio.h=c(zeta.decline.fine.ex.h$ratio,zeta.Coleoptera.h$ratio,zeta.Diptera.h$ratio,zeta.Hemiptera.h$ratio,zeta.Hymenoptera.h$ratio,zeta.Lepidoptera.h$ratio,zeta.Floricolous.h$ratio,zeta.N.Floricolous.h$ratio,zeta.Parasitoids.h$ratio,zeta.N.Parasitoids.h$ratio,zeta.decline.fine.ex.h$ratio)
+ratio$ratio=c(ratio.l,ratio.m,ratio.h)
+#level content
+ratio$Level=c(rep("Low dieback level",187),rep("Medium dieback level",154),rep("High dieback level",242))
+ratio$Level.2=c(rep("Taxonomic group",102),rep("Functional group",85),rep("Taxonomic group",84),rep("Functional group",70),rep("Taxonomic group",132),rep("Functional group",110))
+
+#group content
+ratio$Group=c(rep("ALL",17),rep("Coleoptera",17),rep("Diptera",17),rep("Hemiptera",17),rep("Hymenoptera",17),rep("Lepidoptera",17),rep("Floricolous",17),rep("No.Floricolous",17),rep("Parasitoids",17),rep("No.Parasitoids",17),rep("ALL",17),rep("ALL",14),rep("Coleoptera",14),rep("Diptera",14),rep("Hemiptera",14),rep("Hymenoptera",14),rep("Lepidoptera",14),rep("Floricolous",14),rep("No.Floricolous",14),rep("Parasitoids",14),rep("No.Parasitoids",14),rep("ALL",14),rep("ALL",22),rep("Coleoptera",22),rep("Diptera",22),rep("Hemiptera",22),rep("Hymenoptera",22),rep("Lepidoptera",22),rep("Floricolous",22),rep("No.Floricolous",22),rep("Parasitoids",22),rep("No.Parasitoids",22),rep("ALL",22))
+
+#set level for columns
+ratio$Level=as.factor(ratio$Level)
+ratio$Level=factor(ratio$Level,levels =c('Low dieback level','Medium dieback level','High dieback level'))
+ratio$Level.2=as.factor(ratio$Level.2)
+ratio$Level.2=factor(ratio$Level.2,levels =c('Taxonomic group','Functional group'))
+ratio$Group=as.factor(ratio$Group)
+ratio$Group=factor(ratio$Group,levels =c('ALL','Coleoptera','Diptera','Hemiptera','Hymenoptera','Lepidoptera','Floricolous','No.Floricolous','Parasitoids','No.Parasitoids'))
+#col=c("#F8766D","#1B9E77","#D95F02","#7570B3","#E6AB02","#666666","#66A61E","#66A61E","#A65628","#A65628")
+col=c("forestgreen","tan3","cornflowerblue","lightgoldenrod2","tomato2","yellowgreen","#D73027","#D73027","darkslategray3","darkslategray3")
+#RColorBrewer::brewer.pal(11, "RdGy")
+######plot
+ggplot(data=ratio, aes(x=order, y=ratio, colour= Group,shape=Group))+ geom_line(size=0.3,position=position_dodge(0.9))+facet_grid(Level ~ Level.2)+theme(panel.background=element_rect(fill='transparent', color='gray'))+geom_point(size=2,position=position_dodge(0.9))+scale_shape_manual(values=c(16,3,4,6,1,5,0,2,0,2))+scale_color_manual(values=col)+xlab("Zeta.order")+ylab("Zeta.ratio")
+
+# ggplot(data=ratio, aes(x=order, y=ratio, colour= Level,shape=Group))+ geom_line(size=0.3,position=position_dodge(0.9))+theme(panel.background=element_rect(fill='transparent', color='gray'))+geom_point(size=2,position=position_dodge(0.9))+scale_shape_manual(values=c(16,3,4,6,1,5,0,2,7,8))+xlab("Zeta.order")+ylab("Zeta.ratio")+facet_wrap(~Group, nrow = 5)+scale_color_manual(values=c("#00BA38","#619CFF","#F8766D")) 
+
+#f_labels <- data.frame(Group =c('ALL','Coleoptera','Diptera','Hemiptera','Hymenoptera','Lepidoptera','Floricolous','No.Floricolous','Parasitoids','No.Parasitoids'), label=c('A','G','B','H','C','I','D','J','E','K'))
+#+ geom_text(x=0, y=1, aes(label=label), data=f_labels)
+#+annotate(geom="text", x=0, y=1, label='A', size=3)#添加统一注释
+#cowplot::plot_grid(p3, p4, labels = c('p3', 'p4'))#添加图层外的注释
+
+```
+
+#Suppl. Figure NN zeta decline
+```{r zeta.decline NN for Suppl. figure}
+#low
+
+community.l <- env %>% dplyr::filter(env$classe_depe=="low") %>% dplyr::select(starts_with("OTU"))
+community.l <- community.l[, which(specnumber(community.l, MARGIN=2) > 1)]
+
+xy.l<- env %>% dplyr::filter(env$classe_depe=="low") %>% dplyr::select(c(lat,lon))
+xy.l<-data.frame(xy.l)
+
+##NN zeta all
+set.seed(1)
+zeta.decline.fine.NN.l <- Zeta.decline.mc(community.l, xy.l, orders = 1:18,
+sam = 2000, NON = TRUE, plot = FALSE)
+zeta.decline.fine.NN.l #~AIC= (pl:-68.757249)-(NNp:1.010042)
+
+##NN zeta
+set.seed(1)
+zeta.Coleoptera.NN.l <- Zeta.decline.mc(Coleoptera.l, xy.l, orders = 1:18,
+sam = 2000, NON = TRUE, plot = FALSE)
+set.seed(1)
+zeta.Diptera.NN.l <- Zeta.decline.mc(Diptera.l, xy.l, orders = 1:18,
+sam = 2000, NON = TRUE, plot = FALSE)
+set.seed(1)
+zeta.Hemiptera.NN.l <- Zeta.decline.mc(Hemiptera.l, xy.l, orders = 1:18,
+sam = 2000, NON = TRUE, plot = FALSE)
+set.seed(1)
+zeta.Hymenoptera.NN.l <- Zeta.decline.mc(Hymenoptera.l, xy.l, orders = 1:18,
+sam = 2000, NON = TRUE, plot = FALSE)
+set.seed(1)
+zeta.Lepidoptera.NN.l <- Zeta.decline.mc(Lepidoptera.l, xy.l, orders = 1:18,
+sam = 2000, NON = TRUE, plot = FALSE)
+####functional group
+zeta.Floricolous.NN.l <- Zeta.decline.mc(Floricolous.l, xy.l, orders = 1:18,
+sam = 2000, NON = TRUE, plot = FALSE)
+set.seed(1)
+zeta.N.Floricolous.NN.l <- Zeta.decline.mc(N.Floricolous.l, xy.l, orders = 1:18,
+sam = 2000, NON = TRUE, plot = FALSE)
+set.seed(1)
+zeta.Parasitoids.NN.l <- Zeta.decline.mc(Parasitoids.l, xy.l, orders = 1:18,
+sam = 2000, NON = TRUE, plot = FALSE)
+set.seed(1)
+zeta.N.Parasitoids.NN.l <- Zeta.decline.mc(N.Parasitoids.l, xy.l, orders = 1:18,
+sam = 2000, NON = TRUE, plot = FALSE)
+
+#medium
+
+community.m <- env %>% dplyr::filter(env$classe_depe=="medium") %>% dplyr::select(starts_with("OTU"))
+community.m <- community.m[, which(specnumber(community.m, MARGIN=2) > 1)]
+
+xy.m<- env %>% dplyr::filter(env$classe_depe=="medium") %>% dplyr::select(c(lat,lon))
+xy.m<-data.frame(xy.m)
+
+set.seed(1)
+zeta.decline.fine.NN.m <- Zeta.decline.mc(community.m, xy.m, orders = 1:15,
+sam = 2000, NON = TRUE, plot = FALSE)
+zeta.decline.fine.NN.m #~AIC= (pl:51.69)-(NNp:16.03)= 35.66 DF=3
+set.seed(1)
+zeta.Coleoptera.NN.m <- Zeta.decline.mc(Coleoptera.m, xy.m, orders = 1:15,
+sam = 2000, NON = TRUE, plot = FALSE)
+set.seed(1)
+zeta.Diptera.NN.m <- Zeta.decline.mc(Diptera.m, xy.m, orders = 1:15,
+sam = 2000, NON = TRUE, plot = FALSE)
+set.seed(1)
+zeta.Hemiptera.NN.m <- Zeta.decline.mc(Hemiptera.m, xy.m, orders = 1:15,
+sam = 2000, NON = TRUE, plot = FALSE)
+set.seed(1)
+zeta.Hymenoptera.NN.m <- Zeta.decline.mc(Hymenoptera.m, xy.m, orders = 1:15,
+sam = 2000, NON = TRUE, plot = FALSE)
+set.seed(1)
+zeta.Lepidoptera.NN.m <- Zeta.decline.mc(Lepidoptera.m, xy.m, orders = 1:15,
+sam = 2000, NON = TRUE, plot = FALSE)
+#functional
+zeta.Floricolous.NN.m <- Zeta.decline.mc(Floricolous.m, xy.m, orders = 1:15,
+sam = 2000, NON = TRUE, plot = FALSE)
+set.seed(1)
+zeta.N.Floricolous.NN.m <- Zeta.decline.mc(N.Floricolous.m, xy.m, orders = 1:15,
+sam = 2000, NON = TRUE, plot = FALSE)
+set.seed(1)
+zeta.Parasitoids.NN.m <- Zeta.decline.mc(Parasitoids.m, xy.m, orders = 1:15,
+sam = 2000, NON = TRUE, plot = FALSE)
+set.seed(1)
+zeta.N.Parasitoids.NN.m <- Zeta.decline.mc(N.Parasitoids.m, xy.m, orders = 1:15,
+sam = 2000, NON = TRUE, plot = FALSE)
+
+#high
+
+ community.h <- env %>% dplyr::filter(env$classe_depe=="high") %>% dplyr::select(starts_with("OTU"))
+community.h <- community.h[, which(specnumber(community.h, MARGIN=2) > 1)]
+
+xy.h<- env %>% dplyr::filter(env$classe_depe=="high") %>% dplyr::select(c(lat,lon))
+xy.h<-data.frame(xy.h)
+
+set.seed(1)
+zeta.decline.fine.NN.h <- Zeta.decline.mc(community.h, xy.h, orders = 1:23,
+sam = 2000, NON = TRUE, plot = FALSE)
+zeta.decline.fine.NN.h #~AIC= (pl:51.69)-(NNp:16.03)
+##NN zeta
+set.seed(1)
+zeta.Coleoptera.NN.h <- Zeta.decline.mc(Coleoptera.h, xy.h, orders = 1:23,
+sam = 2000, NON = TRUE, plot = FALSE)
+set.seed(1)
+zeta.Diptera.NN.h <- Zeta.decline.mc(Diptera.h, xy.h, orders = 1:23,
+sam = 2000, NON = TRUE, plot = FALSE)
+set.seed(1)
+zeta.Hemiptera.NN.h <- Zeta.decline.mc(Hemiptera.h, xy.h, orders = 1:23,
+sam = 2000, NON = TRUE, plot = FALSE)
+set.seed(1)
+zeta.Hymenoptera.NN.h <- Zeta.decline.mc(Hymenoptera.h, xy.h, orders = 1:23,
+sam = 2000, NON = TRUE, plot = FALSE)
+set.seed(1)
+zeta.Lepidoptera.NN.h <- Zeta.decline.mc(Lepidoptera.h, xy.h, orders = 1:23,
+sam = 2000, NON = TRUE, plot = FALSE)
+#functional
+zeta.Floricolous.NN.h <- Zeta.decline.mc(Floricolous.h, xy.h, orders = 1:23,
+sam = 2000, NON = TRUE, plot = FALSE)
+set.seed(1)
+zeta.N.Floricolous.NN.h <- Zeta.decline.mc(N.Floricolous.h, xy.h, orders = 1:23,
+sam = 2000, NON = TRUE, plot = FALSE)
+set.seed(1)
+zeta.Parasitoids.NN.h <- Zeta.decline.mc(Parasitoids.h, xy.h, orders = 1:23,
+sam = 2000, NON = TRUE, plot = FALSE)
+set.seed(1)
+zeta.N.Parasitoids.NN.h <- Zeta.decline.mc(N.Parasitoids.h, xy.h, orders = 1:23,
+sam = 2000, NON = TRUE, plot = FALSE)
+
+```
+
+```{r plot suppl. Figure}
+par(mfrow = c(1,1))
+#for using the ggplot, need to NNtract the values from the zeta.decline model 
+ratio<- data.frame(matrix(NA,583,ncol=5))
+colnames(ratio)<-c("order","ratio","Level","Group","Level.2")
+###order content
+oredr.l=rep(zeta.decline.fine.NN.l$zeta.order[1:(length(zeta.decline.fine.NN.l$zeta.order) - 1)],11)
+oredr.m=rep(zeta.decline.fine.NN.m$zeta.order[1:(length(zeta.decline.fine.NN.m$zeta.order) - 1)],11)
+oredr.h=rep(zeta.decline.fine.NN.h$zeta.order[1:(length(zeta.decline.fine.NN.h$zeta.order) - 1)],11)
+ratio$order=c(oredr.l,oredr.m,oredr.h)
+###ratio content
+ratio.NN.l=c(zeta.decline.fine.NN.l$ratio,zeta.Coleoptera.NN.l$ratio,zeta.Diptera.NN.l$ratio,zeta.Hemiptera.NN.l$ratio,zeta.Hymenoptera.NN.l$ratio,zeta.Lepidoptera.NN.l$ratio,zeta.Floricolous.NN.l$ratio,zeta.N.Floricolous.NN.l$ratio,zeta.Parasitoids.NN.l$ratio,zeta.N.Parasitoids.NN.l$ratio,zeta.decline.fine.NN.l$ratio)
+ratio.NN.m=c(zeta.decline.fine.NN.m$ratio,zeta.Coleoptera.NN.m$ratio,zeta.Diptera.NN.m$ratio,zeta.Hemiptera.NN.m$ratio,zeta.Hymenoptera.NN.m$ratio,zeta.Lepidoptera.NN.m$ratio,zeta.Floricolous.NN.m$ratio,zeta.N.Floricolous.NN.m$ratio,zeta.Parasitoids.NN.m$ratio,zeta.N.Parasitoids.NN.m$ratio,zeta.decline.fine.NN.m$ratio)
+ratio.NN.h=c(zeta.decline.fine.NN.h$ratio,zeta.Coleoptera.NN.h$ratio,zeta.Diptera.NN.h$ratio,zeta.Hemiptera.NN.h$ratio,zeta.Hymenoptera.NN.h$ratio,zeta.Lepidoptera.NN.h$ratio,zeta.Floricolous.NN.h$ratio,zeta.N.Floricolous.NN.h$ratio,zeta.Parasitoids.NN.h$ratio,zeta.N.Parasitoids.NN.h$ratio,zeta.decline.fine.NN.h$ratio)
+ratio$ratio=c(ratio.NN.l,ratio.NN.m,ratio.NN.h)
+#level content
+ratio$Level=c(rep("Low dieback level",187),rep("Medium dieback level",154),rep("High dieback level",242))
+ratio$Level.2=c(rep("Taxonomic group",102),rep("Functional group",85),rep("Taxonomic group",84),rep("Functional group",70),rep("Taxonomic group",132),rep("Functional group",110))
+
+#group content
+ratio$Group=c(rep("ALL",17),rep("Coleoptera",17),rep("Diptera",17),rep("Hemiptera",17),rep("Hymenoptera",17),rep("Lepidoptera",17),rep("Floricolous",17),rep("No.Floricolous",17),rep("Parasitoids",17),rep("No.Parasitoids",17),rep("ALL",17),rep("ALL",14),rep("Coleoptera",14),rep("Diptera",14),rep("Hemiptera",14),rep("Hymenoptera",14),rep("Lepidoptera",14),rep("Floricolous",14),rep("No.Floricolous",14),rep("Parasitoids",14),rep("No.Parasitoids",14),rep("ALL",14),rep("ALL",22),rep("Coleoptera",22),rep("Diptera",22),rep("Hemiptera",22),rep("Hymenoptera",22),rep("Lepidoptera",22),rep("Floricolous",22),rep("No.Floricolous",22),rep("Parasitoids",22),rep("No.Parasitoids",22),rep("ALL",22))
+
+#set level for columns
+ratio$Level=as.factor(ratio$Level)
+ratio$Level=factor(ratio$Level,levels =c('Low dieback level','Medium dieback level','High dieback level'))
+ratio$Level.2=as.factor(ratio$Level.2)
+ratio$Level.2=factor(ratio$Level.2,levels =c('Taxonomic group','Functional group'))
+ratio$Group=as.factor(ratio$Group)
+ratio$Group=factor(ratio$Group,levels =c('ALL','Coleoptera','Diptera','Hemiptera','Hymenoptera','Lepidoptera','Floricolous','No.Floricolous','Parasitoids','No.Parasitoids'))
+#col=c("#F8766D","#1B9E77","#D95F02","#7570B3","#E6AB02","#666666","#66A61E","#66A61E","#A65628","#A65628")
+col=c("forestgreen","tan3","cornflowerblue","lightgoldenrod2","tomato2","yellowgreen","#D73027","#D73027","darkslategray3","darkslategray3")
+#RColorBrewer::brewer.pal(11, "RdGy")
+######plot
+ggplot(data=ratio, aes(x=order, y=ratio, colour= Group,shape=Group))+ geom_line(size=0.3,position=position_dodge(0.9))+facet_grid(Level ~ Level.2)+theme(panel.background=element_rect(fill='transparent', color='gray'))+geom_point(size=2,position=position_dodge(0.9))+scale_shape_manual(values=c(16,3,4,6,1,5,0,2,0,2))+scale_color_manual(values=col)+xlab("Zeta.order")+ylab("Zeta.ratio")
+
+# ggplot(data=ratio, aes(x=order, y=ratio, colour= Level,shape=Group))+ geom_line(size=0.3,position=position_dodge(0.9))+theme(panel.background=element_rect(fill='transparent', color='gray'))+geom_point(size=2,position=position_dodge(0.9))+scale_shape_manual(values=c(16,3,4,6,1,5,0,2,7,8))+xlab("Zeta.order")+ylab("Zeta.ratio")+facet_wrap(~Group, nrow = 5)+scale_color_manual(values=c("#00BA38","#619CFF","#F8766D")) 
+
+#f_labels <- data.frame(Group =c('ALL','Coleoptera','Diptera','Hemiptera','Hymenoptera','Lepidoptera','Floricolous','No.Floricolous','Parasitoids','No.Parasitoids'), label=c('A','G','B','H','C','I','D','J','E','K'))
+#+ geom_tNNt(x=0, y=1, aes(label=label), data=f_labels)
+#+annotate(geom="tNNt", x=0, y=1, label='A', size=3)#添加统一注释
+#cowplot::plot_grid(p3, p4, labels = c('p3', 'p4'))#添加图层外的注释
+
+```
+
+#Figure6
+quick test of code, we can run this chunk
+```{r zeta.msgdm for Sorensen}
+zeta.ispline.fine2<-Zeta.msgdm(zcommunityB,zdata.env,xy=zxy,order=2,sam=1500,reg.type="ispline",normalize="Sorensen", family=binomial(link="log"), cons.inter = -1)
+zeta.ispline.fine50<-Zeta.msgdm(zcommunityB,zdata.env,xy=zxy,order=50,sam=1000,reg.type="ispline",normalize="Sorensen", family=binomial(link="log"), cons.inter = -1)
+
+#variation partition
+zeta.varpart.ispline.fine2 <-Zeta.varpart(msgdm.mod=zeta.ispline.fine2,reg.type ="ispline",family=binomial("log"), cons.inter = -1)
+zeta.varpart.ispline.fine50 <-Zeta.varpart(msgdm.mod=zeta.ispline.fine50,reg.type ="ispline",family=binomial("log"), cons.inter = -1)
+
+#zeta.msgdm plot for Sorensen
+par(mfrow = c(1,2),mar=c(5,5,2,2))
+Plot.ispline(zeta.ispline.fine2, zdata.env, distance = TRUE, legend =FALSE,cex=1.5,lwd=2)
+Plot.ispline(zeta.ispline.fine50, zdata.env, distance = TRUE, legend =FALSE,cex=1.5,lwd=2)
+plot.new()
+par(xpd=NA)
+legend("topleft",lty=1:(ncol(data.env)+1),pch=1:(ncol(data.env)+1),legend=c(names(data.env),"Distance"),cex=1,lwd=1,bty="n")
+
+#variation partitioning
+par(mfrow=c(2,3),oma=c(0,0,0,0),mar=c(0,2,0,5),xpd=NA)
+pie.neg(zeta.varpart.ispline.fine2[4:7,1], density = c(4, 0, 8, -1),angle = c(90, 0, 0, 0), labels =c("distance","undistinguishable","environment","unexplained"),radius = 0.9)
+text(x=par("usr")[1],y=0.85*par("usr")[4],"a)",cex=2)
+text(x=(par("usr")[1]+par("usr")[2])/2,y=0.85*par("usr")[4],expression(paste(zeta[2])),cex=2)
+pie.neg(zeta.varpart.ispline.fine50[4:7,1], density = c(4, 0, 8, -1),angle = c(90, 0, 0, 0), labels =c("distance","undistinguishable","environment","unexplained"),radius = 0.9)
+text(x=par("usr")[1],y=0.85*par("usr")[4],"g)",cex=2)
+text(x=(par("usr")[1]+par("usr")[2])/2,y=0.85*par("usr")[4],expression(paste(zeta[50])),cex=2)
+```
+
+figures for paper are run by this 30 times rep. to get a reliable value.
+```{r 30 rep. coefficients. for Sorensen}
+#there is a "msgdm.csv" file for saving result, run a new model for six orders need about 13 hours
+############30 rep model####################################
+x=list(order10=10,order20=20,order28=28)
+library(parallel)
+#cl.cores <- detectCores()#see how many CPU cores in your pc
+cl <- makeCluster(3)
+zeta.msgdm.func = function(x, zcommunityB, zdata.env, zxy){
+  library(zetadiv)
+  varpartRa <- matrix(NA,30,ncol=1)
+  varpartRb <- matrix(NA,30,ncol=1)
+  varpartRc <- matrix(NA,30,ncol=1)
+  varpartRd <- matrix(NA,30,ncol=1)
+  coefficients <- data.frame(matrix(NA,30,ncol=25))
+  for(z in 1:30){
+    set.seed(z)
+  msgdm<-Zeta.msgdm(zcommunityB,zdata.env,xy = zxy,order=x,sam=5000,reg.type="ispline",normalize="Sorensen", family=binomial(link="log"), cons.inter = -1)
+  set.seed(z)
+  varpart <-Zeta.varpart(msgdm.mod=msgdm,reg.type ="ispline",family=binomial("log"), cons.inter = -1)
+  varpartRa[z]<-varpart$`Adjusted Rsq`[4]
+  varpartRb[z]<-varpart$`Adjusted Rsq`[5]
+  varpartRc[z]<-varpart$`Adjusted Rsq`[6]
+  varpartRd[z]<-varpart$`Adjusted Rsq`[7]
+  coefficients[z,]<-msgdm$model$coefficients
+  }
+  varpartR.meana<-mean(varpartRa);varpartR.meanb<-mean(varpartRb);varpartR.meanc<-mean(varpartRc);varpartR.meand<-mean(varpartRd)
+  varpartR.sda<-sd(varpartRa);varpartR.sdb<-sd(varpartRb);varpartR.sdc<-sd(varpartRc);varpartR.sdd<-sd(varpartRd)
+  vpr.m=c(varpartR.meana,varpartR.meanb,varpartR.meanc,varpartR.meand)
+  vpr.sd=c(varpartR.sda,varpartR.sdb,varpartR.sdc,varpartR.sdd)
+  coefficients<-apply(coefficients,2,mean)
+  msgdm$model$coefficients<-coefficients
+  result=list(vpr.m=vpr.m,vpr.sd=vpr.sd,msmgdm=msgdm)
+  return(result)
+}
+stopCluster(cl)
+result.10.20.28= parLapply(cl=cl,x, zeta.msgdm.func, zcommunityB = zcommunityB,zdata.env=zdata.env,zxy=zxy)
+#result.10.20.28=readRDS("result.10.20.28.RDS")
+#result_40_50=readRDS("result_40_50")
+########order2 only ned one run, 5000 samples is enough for order=2.
+set.seed(1)
+zeta.ispline.fine2<-Zeta.msgdm(zcommunityB,zdata.env,xy = zxy,order=2,sam=5000,reg.type="ispline",normalize="Sorensen", family=binomial(link="log"), cons.inter = -1)
+  set.seed(z)
+zeta.varpart2<-Zeta.varpart(msgdm.mod=zeta.ispline.fine2,reg.type ="ispline",family=binomial("log"), cons.inter = -1)
+varpartR$mean[c(1,7,13,19)]<-zeta.varpart2$`Adjusted Rsq`[4:7]
+varpartR$sd[c(1,7,13,19)]<-0
+#######plot varpartR##################################################
+varpartR<- data.frame(matrix(NA,24,ncol=4))
+colnames(varpartR)<-c("mean","sd","order","group")
+varpartR$order<-c(2,10,20,28,40,50)
+varpartR$group[1:6]<-"Distance"
+varpartR$group[7:12]<-"Undistinguishable"
+varpartR$group[13:18]<-"Environmental"
+varpartR$group[19:24]<-"Unexplained"
+
+varpartR$mean[c(2,8,14,20)]<-result.10.20.28$order10$vpr.m
+varpartR$sd[c(2,8,14,20)]<-result.10.20.28$order10$vpr.sd
+varpartR$mean[c(3,9,15,21)]<-result.10.20.28$order20$vpr.m
+varpartR$sd[c(3,9,15,21)]<-result.10.20.28$order20$vpr.sd
+varpartR$mean[c(4,10,16,22)]<-result.10.20.28$order28$vpr.m
+varpartR$sd[c(4,10,16,22)]<-result.10.20.28$order28$vpr.sd
+varpartR$mean[c(5,11,17,23)]<-result_40_50$order40$vpr.m
+varpartR$sd[c(5,11,17,23)]<-result_40_50$order40$vpr.sd
+varpartR$mean[c(6,12,18,24)]<-result_40_50$order50$vpr.m
+varpartR$sd[c(6,12,18,24)]<-result_40_50$order50$vpr.sd
+
+ggplot(varpartR, aes(x=order, y=mean, colour=group,group=group)) +geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.05) +geom_point(size=3, shape=21, fill="white") +xlab("Zeta order")+ ylab(expression("Variance explained "*R^{2}))+ theme_bw()+geom_line( linetype="dashed")+annotate("text", label = "Unexplained", x = 7, y = 0.57, size = 3.5, colour = "#C77CFF")+annotate("text", label = "Environmental", x = 8, y = 0.22, size = 3.5, colour = "#7CAE00")+annotate("text", label = "Distance", x = 32, y = 0.1, size = 3.5, colour = "#F8766D")+annotate("text", label = "Undistinguishable", x = 40, y = 0, size = 3.5, colour = "#00BFC4")+theme(legend.position="none")
+
+#######plot msgdm#####################
+####### create table for plot##################
+zeta.ispline.2 <- Return.ispline(zeta.ispline.fine2, zdata.env, distance = TRUE)
+zeta.ispline.10 <- Return.ispline(result.10.20.28$order10$msmgdm, zdata.env, distance = TRUE)
+zeta.ispline.20 <- Return.ispline(result.10.20.28$order20$msmgdm, zdata.env, distance = TRUE)
+zeta.ispline.28 <- Return.ispline(result.10.20.28$order28$msmgdm, zdata.env, distance = TRUE)
+zeta.ispline.40 <- Return.ispline(result_40_50$order40$msmgdm, zdata.env, distance = TRUE)
+zeta.ispline.50 <- Return.ispline(result_40_50$order50$msmgdm, zdata.env, distance = TRUE)
+
+zeta.ispline=list(zeta.ispline.2,zeta.ispline.10,zeta.ispline.20,zeta.ispline.28,zeta.ispline.40,zeta.ispline.50)
+zeta.Ispline=data.frame(order2=numeric(),order10=numeric(),order20=numeric(),order28=numeric(),order40=numeric(),order50=numeric())
+zeta.env=data.frame(order2=numeric(),order10=numeric(),order20=numeric(),order28=numeric(),order40=numeric(),order50=numeric())
+zeta.env[448,6]=NA
+zeta.Ispline[448,6]=NA
+  for(j in 1:6){
+x= as.matrix(zeta.ispline[[j]]$Ispline)
+dim(x)<- c(448*1,1)
+zeta.Ispline[,j]<-x
+y= as.matrix(zeta.ispline[[j]]$env)
+dim(y)<- c(448*1,1)
+zeta.env[,j]<-y
+}
+msgdm<- data.frame(matrix(NA,2688,ncol=4))
+colnames(msgdm)<-c("Ispline","Rescaled range","order","Env.factor")
+msgdm$Ispline=c(zeta.Ispline$order2,zeta.Ispline$order10,zeta.Ispline$order20,zeta.Ispline$order28,zeta.Ispline$order40,zeta.Ispline$order50)
+msgdm$`Rescaled range`=c(zeta.env$order2,zeta.env$order10,zeta.env$order20,zeta.env$order28,zeta.env$order40,zeta.env$order50)
+env.name=c(rep("Altitude",56),rep("TreM.diversity",56),rep("Deadwood.total",56),rep("Canopy.openness",56),rep("Big.tree.density",56),rep("Tree.diversity",56),rep("Basal.area",56),rep("Distance",56))
+msgdm$order=c(rep("Order2",448),rep("Order10",448),rep("Order20",448),rep("Order28",448),rep("Order40",448),rep("Order50",448))
+msgdm$Env.factor=env.name
+msgdm$Env.factor=as.character(msgdm$Env.factor)
+msgdm$order=as.factor(msgdm$order)
+msgdm$order=factor(msgdm$order,levels =c('Order2','Order10','Order20','Order28','Order40','Order50'))
+col <- RColorBrewer::brewer.pal(8, "Dark2")
+#msgdm2=msgdm[c(TRUE, FALSE,FALSE, FALSE,FALSE),]#每隔5行选一行
+#######################plot code######################
+#msgdm=read.csv("msgdm.csv")
+#msgdm$order=as.factor(msgdm$order)
+#msgdm$order=factor(msgdm$order,levels =c('Order2','Order10','Order20','Order28','Order40','Order50'))
+#col <- RColorBrewer::brewer.pal(8, "Dark2")
+
+ggplot(data=msgdm, aes(x=Rescaled.range, y=Ispline, colour= Env.factor))+ geom_line(size=0.8,linetype="longdash")+facet_wrap(~order, scales="free_y")+scale_color_manual(values=col)+theme(panel.background=element_rect(fill='transparent', color='gray'))+xlab("Rescaled range")
+```
+
+
+

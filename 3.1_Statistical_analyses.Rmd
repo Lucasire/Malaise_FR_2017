@@ -1,0 +1,1302 @@
+---
+title: "3_Statistical_analyses"
+author: "Lucas Sire"
+date: "4/13/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+##  General information
+
+This R Markdown file is attached to the article *"Sire et al. 2021 - Insects Facing Forest Dieback—Catastrophe or Part of Natural Succession Dynamics?"*.
+
+It corresponds to the R script that generated results discussed in the paper.
+
+All files (Raw and complementary files) attached to this study and necessary to redo the following analyses are publicly available in the GitHub repository: *https://github.com/Lucasire/Malaise_FR_2017*.
+
+## Background
+
+The analyses are done on data coming from 56 plots among two regions in France. Sampling period was carried out from May to September 2017 using Malaise traps sampled every month. Along insect sampling, all environmental data for each **natural plot** were assessed by forest experts. (No experimental plot was designed and altered on purpose).
+
+Samples were treated with **metabarcoding approach**.
+
+## Libraries
+
+```{r Libraries}
+library(car)
+library(performance)
+library(see)
+library(multcomp)
+library(here)
+library(mvabund)
+library(ordinal)
+library(ecoCopula)
+library(tidyr)
+library(dplyr)
+library(labdsv)
+library(corrplot)
+library(ggplot2)
+library(ggrepel)
+library(RColorBrewer)
+library(tidygraph)
+library(ggraph)
+library(glm2)
+library(ggrepel)
+library(lattice)
+library(gridExtra)
+library(indicspecies)
+library(phyloseq)
+library(dichromat)
+library(vegan)
+library(phyloseq)
+library(phangorn)
+library(seqinr)
+library(ape)
+library(tcltk)
+library(iNEXT)
+library(vegan)
+```
+
+### Extrapolations of species diversity
+
+```{r Extrapolations, echo=TRUE, message=FALSE, warning=FALSE}
+### Data importation
+
+OTUs_list <- read.table("OTUs.txt", h = T)
+
+Col_list <- read.table("Col.txt", h = T)
+
+Dip_list <- read.table("Dip.txt", h = T)
+
+Hem_list <- read.table("Hem.txt", h = T)
+
+Hym_list <- read.table("Hym.txt", h = T)
+
+Lep_list <- read.table("Lep.txt", h = T)
+
+Others_list <- read.table("Others.txt", h = T)
+
+OTUs_specpool <- read.table("OTUs_specpool.txt", h = T)
+
+Months <- read.table("Months.txt", h = T)
+
+# Accumulation curves
+
+### Grouping
+
+
+Total <- rowSums(OTUs_list)
+May <- rowSums(OTUs_list[,159:211])
+June <- rowSums(OTUs_list[,105:158])
+July <- rowSums(OTUs_list[,51:104])
+August <- rowSums(OTUs_list[,1:50])
+TOTAL <- cbind(May, June, July, August, Total)
+
+Col_Tot <- rowSums(Col_list)
+Dip_Tot <- rowSums(Dip_list)
+Hem_Tot <- rowSums(Hem_list)
+Hym_Tot <- rowSums(Hym_list)
+Lep_Tot <- rowSums(Lep_list)
+Others_Tot <- rowSums(Others_list)
+
+
+### Hill Numbers
+
+
+xOTUs <- iNEXT(Total, q = 0, datatype = "incidence_freq")
+xMay <- iNEXT(May, q = 0, datatype = "incidence_freq")
+xJune <- iNEXT(June, q = 0, datatype = "incidence_freq")
+xJuly <- iNEXT(July, q = 0, datatype = "incidence_freq")
+xAugust <- iNEXT(August, q = 0, datatype = "incidence_freq")
+xTOTAL <- iNEXT(TOTAL, q = 0, datatype = "incidence_freq")
+
+xCol <- iNEXT(Col_Tot, q = 0, datatype = "incidence_freq")
+xDip <- iNEXT(Dip_Tot, q = 0, datatype = "incidence_freq")
+xHem <- iNEXT(Hem_Tot, q = 0, datatype = "incidence_freq")
+xHym <- iNEXT(Hym_Tot, q = 0, datatype = "incidence_freq")
+xLep <- iNEXT(Lep_Tot, q = 0, datatype = "incidence_freq")
+xOthers <- iNEXT(Others_Tot, q = 0, datatype = "incidence_freq")
+
+
+### Extrapolations
+
+
+specpool(t(OTUs_specpool), t(Months))
+specpool(t(OTUs_specpool))
+
+
+### Figures
+
+
+pdf(file="Figure 1A-C.pdf")
+
+plot_window <- rbind(c(1,1), c(2,3))
+print(plot_window)
+
+layout(plot_window)
+par(mar = c(5,5,3,2), cex.axis = 1.5, cex.lab = 1.5, cex.main = 2.5)
+
+for(i in 1:3) {
+  plot(xTOTAL, type = 1, show.main = F, show.legend = F, main = "A", col = c("slateblue2", "mediumturquoise", "goldenrod2", "darksalmon", "forestgreen"))
+  legend("bottomright", legend = c("Total","May","June", "July", "August"),  col = c("forestgreen", "darksalmon", "goldenrod2", "mediumturquoise", "slateblue2"), lty = 1, lwd = 2, bty = "n", pt.cex = c(1.4,1.4,1.7,1.4), seg.len = 2, cex = 1.5, xjust = 0.9)
+  plot(xTOTAL, type = 2, show.main = F, show.legend = F, main = "B", col = c("slateblue2", "mediumturquoise", "goldenrod2", "darksalmon", "forestgreen"))
+  plot(xTOTAL, type = 3, show.main = F, show.legend = F, main = "C", col = c("slateblue2", "mediumturquoise", "goldenrod2", "darksalmon", "forestgreen"))
+  plot
+  }
+
+dev.off()
+
+###
+
+pdf(file="Figure 2.pdf")
+
+colgrad <- (c("cornflowerblue", "tomato2", "yellowgreen", "tan3", "lightgoldenrod2", "lightpink2"))
+plot_window <- rbind(c(1,1,1), c(1,1,1), c(2,3,4), c(5,6,7))
+print(plot_window)
+
+layout(plot_window)
+par(mar = c(2.5,2.5,2.5,2.5), cex.axis = 1.5, cex.lab = 1.5, cex.main = 2.5)
+for(i in 1:5) {
+  pie(Pie_Chart[,2], main = 'A', labels = c("1295 - 43%", "893 - 30%", "385 - 13%", "218 - 7.3%", "94 - 3.2%", "87 - 2.9%"), cex = 2, edges = 1000, radius = 0.8, clockwise = FALSE, col = colgrad)
+  legend("bottomleft", legend = c("Diptera","Hymenoptera","Lepidoptera", "Coleoptera", "Hemiptera", "Others"),  col = colgrad, lty = 1, lwd = 4, bty = "n", pt.cex = c(1.4,1.4,1.7,1.4), seg.len = 2, cex = 1.5, xjust = 0.9)
+    plot(xDip, type = 1, show.main = F, show.legend = F, col = c("cornflowerblue"))
+    plot(xHym, type = 1, show.main = F, show.legend = F, main = "B", col = c("tomato2"))
+    plot(xLep, type = 1, show.main = F, show.legend = F, col = c("yellowgreen"))
+    plot(xCol, type = 1, show.main = F, show.legend = F, col = c("tan3"))
+    plot(xHem, type = 1, show.main = F, show.legend = F, col = c("lightgoldenrod2"))
+    plot(xOthers, type = 1, show.main = F, show.legend = F, col = c("lightpink2"))
+}
+
+dev.off()
+
+###
+
+pdf(file="Supplementary Figure 1.pdf")
+
+layout(1)
+par(mai=c(1, 1.5, 1, 1))
+matrice <- matrix(c(2972, 4071.459, 3963.28))
+barplot(matrice
+        ,space = 0.5
+        ,beside = TRUE
+        ,horiz = FALSE
+        ,legend.text = FALSE
+        ,xlab=""
+        ,ylab="MOTUs richness"
+        ,cex.lab=2
+        ,cex.axis = 1.5
+        ,xlim=c(0,5)
+        ,ylim=c(0,5000)
+        ,lwd = 2
+        ,pch=16
+        ,col= c("forestgreen", "grey75", "grey42"))
+axis(side=1.5,at=c(1,2.5,4),labels=c("OBSERVED","CHAO2","JACK1"),tick=FALSE,cex.axis=1.3)
+abline(h = 0, col = "black", lwd = 4)
+
+arrows(2.5, 4072.4599 - 92.98576, 2.5, 4072.459 + 92.98576, col = "black", angle = 90, code = 3, length = 0.3, lwd = 1)
+arrows(4, 3964.28 - 81.55737, 4, 3964.28 + 81.55737, col = "black", angle = 90, code = 3, length = 0.3, lwd = 1)
+
+dev.off()
+```
+
+## Species Richness
+
+```{r Species richness, echo=FALSE}
+### Data import
+
+Pyr_SR = read.csv2("SP_richness.csv")
+
+### Data handling
+
+richness <- (Pyr_SR$SR_Coleoptera) # Change according to what is being tested
+dieback <- as.factor(Pyr_SR$classe_depe)
+salvage <- as.factor(Pyr_SR$Type)
+district <- as.factor(Pyr_SR$site)
+my_data <- data.frame(richness, dieback, salvage, district)
+str(my_data)
+
+### Run models
+
+# run a GLM
+# using poisson (or quasipoisson if dispersion is high)
+
+m1 <- glm(richness ~ dieback * salvage + district, family = poisson)
+m2 <- glm(richness ~ dieback * salvage + district, family = quasipoisson)
+
+### Check models and choose the 'best' one
+
+check_model(m1)
+check_model(m2)
+
+### Results
+
+Anova(m2)
+
+### Simplification if interaction is not significant
+
+m2_reduced <- glm(richness ~ dieback + salvage + district, family = quasipoisson)
+check_model(m2_reduced)
+Anova(m2_reduced)
+
+### Tukey posthoc when significant to check which pairs are different, from the overall model
+
+summary(glht(m2_reduced, linfct=mcp(dieback="Tukey")))
+```
+
+## Community composition
+
+```{r mvabund and EcoCopula, echo=FALSE}
+### Data import and Data handling
+
+X <- read.csv2("X.csv")
+
+Total <- read.csv2("Tot.csv")
+Tot <- Total[,5:2976]
+Tot <- pmin(as.matrix(Tot),1)
+
+Coleoptera = read.csv2("Col.csv")
+Col <- Coleoptera[,5:222]
+Col <- pmin(as.matrix(Col),1)
+
+Diptera = read.csv2("Dip.csv")
+Dip <- Diptera[,5:1299]
+Dip <- pmin(as.matrix(Dip),1)
+
+Hemiptera = read.csv2("Hem.csv")
+Hem <- Hemiptera[,5:98]
+Hem <- pmin(as.matrix(Hem),1)
+
+Hymenoptera = read.csv2("Hym.csv")
+Hym <- Hymenoptera[,5:897]
+Hym <- pmin(as.matrix(Hym),1)
+
+Lepidoptera = read.csv2("Lep.csv")
+Lep <- Lepidoptera[,5:389]
+Lep <- pmin(as.matrix(Lep),1)
+
+Floricolous = read.csv2("Flo.csv")
+Flo <- Floricolous[,5:997]
+Flo <- pmin(as.matrix(Flo),1)
+
+Non_Floricolous = read.csv2("Non_Flo.csv")
+Non_Flo <- Non_Floricolous[,5:1512]
+Non_Flo <- pmin(as.matrix(Non_Flo),1)
+
+Parasitoids = read.csv2("Par.csv")
+Par <- Parasitoids[,5:717]
+Par <- pmin(as.matrix(Par),1)
+
+Non_Parasitoids = read.csv2("Non_Par.csv")
+Non_Par <- Non_Parasitoids[,5:1792]
+Non_Par <- pmin(as.matrix(Non_Par),1)
+
+### Run models
+
+#########
+#  Tot  #
+#########
+
+
+### correlations between sites
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Tot_Corrplot_Site.pdf")
+corrplot(cor(t(Tot)), diag = FALSE, tl.cex = 0.3)
+dev.off()
+
+### Mvabund object
+
+Tot_mvabund = mvabund(Tot)
+
+Mod_Tot <- manyglm(Tot_mvabund ~ X$Dieback + X$Type + X$District, family="binomial")
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Tot_Mod.pdf")
+plot(Mod_Tot)
+dev.off()
+
+Mod_Tot2 <- manyglm(Tot_mvabund ~ X$Dieback + X$Type + X$District, family=binomial("cloglog"))
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Tot_Mod_2.pdf")
+plot(Mod_Tot2)
+dev.off()
+
+#### Run 10 times to get a range of p-values
+
+anova = anova(Mod_Tot2)
+anova
+
+Mod_Tot2.p.Dieback <- c(0.002, 0.007, 0.004, 0.001, 0.006, 0.004, 0.003, 0.004, 0.006, 0.003)
+Mod_Tot2.p.Type <- c(0.053, 0.062, 0.051, 0.051, 0.05, 0.056, 0.057, 0.05, 0.051, 0.049)
+Mod_Tot2.p.District <- c(0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001)
+
+Mod_Tot2.p.adjust.Dieback <- p.adjust(Mod_Tot2.p.Dieback, method = "holm", n = length(Mod_Tot2.p.Dieback))
+Mod_Tot2.p.adjust.Type <- p.adjust(Mod_Tot2.p.Type, method = "holm", n = length(Mod_Tot2.p.Type))
+Mod_Tot2.p.adjust.District <- p.adjust(Mod_Tot2.p.District, method = "holm", n = length(Mod_Tot2.p.District))
+
+Mod_Tot2.p.adjust.Dieback
+Mod_Tot2.p.adjust.Type
+Mod_Tot2.p.adjust.District
+
+### Ordination
+
+Ord_Tot <- cord(Mod_Tot2)
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Tot_Ord_Raw.pdf")
+plot(Ord_Tot, biplot = TRUE)
+dev.off()
+
+Tot_Site_Res <- data.frame(Ord_Tot$scores, X)
+Tot_Sp_Res <- data.frame(Ord_Tot$loadings, OTUs = colnames(Tot))
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Tot_Ord_Environment.pdf")
+alpha <- 2.5
+ggplot() +
+  geom_segment(aes(x = 0, y = 0, xend = Factor1 * alpha * 0.95, yend = Factor2 * alpha * 0.95), data = Tot_Sp_Res) +
+  geom_point(aes(x = Factor1, y = Factor2, shape = Type, fill = Dieback, color = Dieback), data = Tot_Site_Res, size = 3) +
+  scale_fill_manual(values=c("chartreuse3", "darkorange1", "brown3")) +
+  scale_color_manual(values=c("chartreuse3", "darkorange1", "brown3")) +
+  scale_shape_manual(values=c(21, 22, 23)) +
+  geom_text_repel(aes(x = Factor1, y = Factor2, label = Plot), data = Tot_Site_Res, size = 2) + 
+  theme_classic()
+dev.off()
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Tot_Ord_District.pdf")
+alpha <- 2.5
+ggplot() +
+  geom_segment(aes(x = 0, y = 0, xend = Factor1 * alpha * 0.95, yend = Factor2 * alpha * 0.95), data = Tot_Sp_Res) +
+  geom_point(aes(x = Factor1, y = Factor2, shape = District, fill = District, color = District), data = Tot_Site_Res, size = 3) +
+  scale_fill_manual(values=c("cadetblue3", "darkorchid4")) +
+  scale_color_manual(values=c("cadetblue3", "darkorchid4")) +
+  scale_shape_manual(values=c(24, 25)) +
+  geom_text_repel(aes(x = Factor1, y = Factor2, label = Plot), data = Tot_Site_Res, size = 2) + 
+  theme_classic()
+dev.off()
+
+
+#########
+#  Col  #
+#########
+
+
+### correlations between sites
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Col_Corrplot_Site.pdf")
+corrplot(cor(t(Col)), diag = FALSE, tl.cex = 0.3)
+dev.off()
+
+### Mvabund object
+
+Col_mvabund = mvabund(Col)
+
+Mod_Col <- manyglm(Col_mvabund ~ X$Dieback + X$Type + X$District, family="binomial")
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Col_Mod.pdf")
+plot(Mod_Col)
+dev.off()
+
+Mod_Col2 <- manyglm(Col_mvabund ~ X$Dieback + X$Type + X$District, family=binomial("cloglog"))
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Col_Mod_2.pdf")
+plot(Mod_Col2)
+dev.off()
+
+#### Run 10 times to get a range of p-values
+
+anova = anova(Mod_Col2)
+anova
+
+Mod_Col2.p.Dieback <- c(0.034, 0.038, 0.037, 0.024, 0.040, 0.039, 0.032, 0.031, 0.043, 0.030)
+Mod_Col2.p.Type <- c(0.210, 0.182, 0.183, 0.182, 0.176, 0.202, 0.163, 0.199, 0.167, 0.164)
+Mod_Col2.p.District <- c(0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001)
+
+Mod_Col2.p.adjust.Dieback <- p.adjust(Mod_Col2.p.Dieback, method = "holm", n = length(Mod_Col2.p.Dieback))
+Mod_Col2.p.adjust.Type <- p.adjust(Mod_Col2.p.Type, method = "holm", n = length(Mod_Col2.p.Type))
+Mod_Col2.p.adjust.District <- p.adjust(Mod_Col2.p.District, method = "holm", n = length(Mod_Col2.p.District))
+
+Mod_Col2.p.adjust.Dieback
+Mod_Col2.p.adjust.Type
+Mod_Col2.p.adjust.District
+
+### Ordination
+
+Ord_Col <- cord(Mod_Col2)
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Col_Ord_Raw.pdf")
+plot(Ord_Col, biplot = TRUE)
+dev.off()
+
+Col_Site_Res <- data.frame(Ord_Col$scores, X)
+Col_Sp_Res <- data.frame(Ord_Col$loadings, OTUs = colnames(Col))
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Col_Ord_Environment.pdf")
+alpha <- 2.5
+ggplot() +
+  geom_segment(aes(x = 0, y = 0, xend = Factor1 * alpha * 0.95, yend = Factor2 * alpha * 0.95), data = Col_Sp_Res) +
+  geom_point(aes(x = Factor1, y = Factor2, shape = Type, fill = Dieback, color = Dieback), data = Col_Site_Res, size = 3) +
+  scale_fill_manual(values=c("chartreuse3", "darkorange1", "brown3")) +
+  scale_color_manual(values=c("chartreuse3", "darkorange1", "brown3")) +
+  scale_shape_manual(values=c(21, 22, 23)) +
+  geom_text_repel(aes(x = Factor1, y = Factor2, label = Plot), data = Col_Site_Res, size = 2) + 
+  theme_classic()
+dev.off()
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Col_Ord_District.pdf")
+alpha <- 2.5
+ggplot() +
+  geom_segment(aes(x = 0, y = 0, xend = Factor1 * alpha * 0.95, yend = Factor2 * alpha * 0.95), data = Col_Sp_Res) +
+  geom_point(aes(x = Factor1, y = Factor2, shape = District, fill = District, color = District), data = Col_Site_Res, size = 3) +
+  scale_fill_manual(values=c("cadetblue3", "darkorchid4")) +
+  scale_color_manual(values=c("cadetblue3", "darkorchid4")) +
+  scale_shape_manual(values=c(24, 25)) +
+  geom_text_repel(aes(x = Factor1, y = Factor2, label = Plot), data = Col_Site_Res, size = 2) + 
+  theme_classic()
+dev.off()
+
+
+#########
+#  Dip  #
+#########
+
+
+### correlations between sites
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Dip_Corrplot_Site.pdf")
+corrplot(cor(t(Dip)), diag = FALSE, tl.cex = 0.3)
+dev.off()
+
+### Mvabund object
+
+Dip_mvabund = mvabund(Dip)
+
+Mod_Dip <- manyglm(Dip_mvabund ~ X$Dieback + X$Type + X$District, family="binomial")
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Dip_Mod.pdf")
+plot(Mod_Dip)
+dev.off()
+
+Mod_Dip2 <- manyglm(Dip_mvabund ~ X$Dieback + X$Type + X$District, family=binomial("cloglog"))
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Dip_Mod_2.pdf")
+plot(Mod_Dip2)
+dev.off()
+
+#### Run 10 times to get a range of p-values
+
+anova = anova(Mod_Dip2)
+anova
+
+Mod_Dip2.p.Dieback <- c(0.002, 0.004, 0.002, 0.005, 0.004, 0.004, 0.004, 0.004, 0.005, 0.003)
+Mod_Dip2.p.Type <- c(0.149, 118, 0.134, 0.109, 0.127, 0.123, 0.126, 0.118, 0.132, 0.147)
+Mod_Dip2.p.District <- c(0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001)
+
+Mod_Dip2.p.adjust.Dieback <- p.adjust(Mod_Dip2.p.Dieback, method = "holm", n = length(Mod_Dip2.p.Dieback))
+Mod_Dip2.p.adjust.Type <- p.adjust(Mod_Dip2.p.Type, method = "holm", n = length(Mod_Dip2.p.Type))
+Mod_Dip2.p.adjust.District <- p.adjust(Mod_Dip2.p.District, method = "holm", n = length(Mod_Dip2.p.District))
+
+Mod_Dip2.p.adjust.Dieback
+Mod_Dip2.p.adjust.Type
+Mod_Dip2.p.adjust.District
+
+### Ordination
+
+Ord_Dip <- cord(Mod_Dip2)
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Dip_Ord_Raw.pdf")
+plot(Ord_Dip, biplot = TRUE)
+dev.off()
+
+Dip_Site_Res <- data.frame(Ord_Dip$scores, X)
+Dip_Sp_Res <- data.frame(Ord_Dip$loadings, OTUs = colnames(Dip))
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Dip_Ord_Environment.pdf")
+alpha <- 2.5
+ggplot() +
+  geom_segment(aes(x = 0, y = 0, xend = Factor1 * alpha * 0.95, yend = Factor2 * alpha * 0.95), data = Dip_Sp_Res) +
+  geom_point(aes(x = Factor1, y = Factor2, shape = Type, fill = Dieback, color = Dieback), data = Dip_Site_Res, size = 3) +
+  scale_fill_manual(values=c("chartreuse3", "darkorange1", "brown3")) +
+  scale_color_manual(values=c("chartreuse3", "darkorange1", "brown3")) +
+  scale_shape_manual(values=c(21, 22, 23)) +
+  geom_text_repel(aes(x = Factor1, y = Factor2, label = Plot), data = Dip_Site_Res, size = 2) + 
+  theme_classic()
+dev.off()
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Dip_Ord_District.pdf")
+alpha <- 2.5
+ggplot() +
+  geom_segment(aes(x = 0, y = 0, xend = Factor1 * alpha * 0.95, yend = Factor2 * alpha * 0.95), data = Dip_Sp_Res) +
+  geom_point(aes(x = Factor1, y = Factor2, shape = District, fill = District, color = District), data = Dip_Site_Res, size = 3) +
+  scale_fill_manual(values=c("cadetblue3", "darkorchid4")) +
+  scale_color_manual(values=c("cadetblue3", "darkorchid4")) +
+  scale_shape_manual(values=c(24, 25)) +
+  geom_text_repel(aes(x = Factor1, y = Factor2, label = Plot), data = Dip_Site_Res, size = 2) + 
+  theme_classic()
+dev.off()
+
+
+#########
+#  Hem  #
+#########
+
+
+### correlations between sites
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Hem_Corrplot_Site.pdf")
+corrplot(cor((Hem)), diag = FALSE, tl.cex = 0.3)
+dev.off()
+
+### Mvabund object
+
+Hem_mvabund = mvabund(Hem)
+
+Mod_Hem <- manyglm(Hem_mvabund ~ X$Dieback + X$Type + X$District, family="binomial")
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Hem_Mod.pdf")
+plot(Mod_Hem)
+dev.off()
+
+Mod_Hem2 <- manyglm(Hem_mvabund ~ X$Dieback + X$Type + X$District, family=binomial("cloglog"))
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Hem_Mod_2.pdf")
+plot(Mod_Hem2)
+dev.off()
+
+#### Run 10 times to get a range of p-values
+
+anova = anova(Mod_Hem2)
+anova
+
+Mod_Hem2.p.Dieback <- c(0.007, 0.004, 0.008, 0.006, 0.007, 0.004, 0.004, 0.007, 0.004, 0.002)
+Mod_Hem2.p.Type <- c(0.195, 0.176, 0.2, 0.205, 0.19, 0.184, 0.182, 0.190, 0.192, 0.195)
+Mod_Hem2.p.District <- c(0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001)
+
+Mod_Hem2.p.adjust.Dieback <- p.adjust(Mod_Hem2.p.Dieback, method = "holm", n = length(Mod_Hem2.p.Dieback))
+Mod_Hem2.p.adjust.Type <- p.adjust(Mod_Hem2.p.Type, method = "holm", n = length(Mod_Hem2.p.Type))
+Mod_Hem2.p.adjust.District <- p.adjust(Mod_Hem2.p.District, method = "holm", n = length(Mod_Hem2.p.District))
+
+Mod_Hem2.p.adjust.Dieback
+Mod_Hem2.p.adjust.Type
+Mod_Hem2.p.adjust.District
+
+### Ordination
+
+Ord_Hem <- cord(Mod_Hem2)
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Hem_Ord_Raw.pdf")
+plot(Ord_Hem, biplot = TRUE)
+dev.off()
+
+Hem_Site_Res <- data.frame(Ord_Hem$scores, X)
+Hem_Sp_Res <- data.frame(Ord_Hem$loadings, OTUs = colnames(Hem))
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Hem_Ord_Environment.pdf")
+alpha <- 2.5
+ggplot() +
+  geom_segment(aes(x = 0, y = 0, xend = Factor1 * alpha * 0.95, yend = Factor2 * alpha * 0.95), data = Hem_Sp_Res) +
+  geom_point(aes(x = Factor1, y = Factor2, shape = Type, fill = Dieback, color = Dieback), data = Hem_Site_Res, size = 3) +
+  scale_fill_manual(values=c("chartreuse3", "darkorange1", "brown3")) +
+  scale_color_manual(values=c("chartreuse3", "darkorange1", "brown3")) +
+  scale_shape_manual(values=c(21, 22, 23)) +
+  geom_text_repel(aes(x = Factor1, y = Factor2, label = Plot), data = Hem_Site_Res, size = 2) + 
+  theme_classic()
+dev.off()
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Hem_Ord_District.pdf")
+alpha <- 2.5
+ggplot() +
+  geom_segment(aes(x = 0, y = 0, xend = Factor1 * alpha * 0.95, yend = Factor2 * alpha * 0.95), data = Hem_Sp_Res) +
+  geom_point(aes(x = Factor1, y = Factor2, shape = District, fill = District, color = District), data = Hem_Site_Res, size = 3) +
+  scale_fill_manual(values=c("cadetblue3", "darkorchid4")) +
+  scale_color_manual(values=c("cadetblue3", "darkorchid4")) +
+  scale_shape_manual(values=c(24, 25)) +
+  geom_text_repel(aes(x = Factor1, y = Factor2, label = Plot), data = Hem_Site_Res, size = 2) + 
+  theme_classic()
+dev.off()
+
+
+#########
+#  Hym  #
+#########
+
+
+### correlations between sites
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Hym_Corrplot_Site.pdf")
+corrplot(cor(t(Hym)), diag = FALSE, tl.cex = 0.3)
+dev.off()
+
+### Mvabund object
+
+Hym_mvabund = mvabund(Hym)
+
+Mod_Hym <- manyglm(Hym_mvabund ~ X$Dieback + X$Type + X$District, family="binomial")
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Hym_Mod.pdf")
+plot(Mod_Hym)
+dev.off()
+
+Mod_Hym2 <- manyglm(Hym_mvabund ~ X$Dieback + X$Type + X$District, family=binomial("cloglog"))
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Hym_Mod_2.pdf")
+plot(Mod_Hym2)
+dev.off()
+
+#### Run 10 times to get a range of p-values
+
+anova = anova(Mod_Hym2)
+anova
+
+Mod_Hym2.p.Dieback <- c(0.005, 0.002, 0.003, 0.007, 0.003, 0.006, 0.006, 0.005, 0.006, 0.001)
+Mod_Hym2.p.Type <- c(0.035, 0.033, 0.27, 0.028, 0.031, 0.037, 0.035, 0.039, 0.042, 0.029)
+Mod_Hym2.p.District <- c(0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001)
+
+Mod_Hym2.p.adjust.Dieback <- p.adjust(Mod_Hym2.p.Dieback, method = "holm", n = length(Mod_Hym2.p.Dieback))
+Mod_Hym2.p.adjust.Type <- p.adjust(Mod_Hym2.p.Type, method = "holm", n = length(Mod_Hym2.p.Type))
+Mod_Hym2.p.adjust.District <- p.adjust(Mod_Hym2.p.District, method = "holm", n = length(Mod_Hym2.p.District))
+
+Mod_Hym2.p.adjust.Dieback
+Mod_Hym2.p.adjust.Type
+Mod_Hym2.p.adjust.District
+
+### Ordination
+
+Ord_Hym <- cord(Mod_Hym2)
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Hym_Ord_Raw.pdf")
+plot(Ord_Hym, biplot = TRUE)
+dev.off()
+
+Hym_Site_Res <- data.frame(Ord_Hym$scores, X)
+Hym_Sp_Res <- data.frame(Ord_Hym$loadings, OTUs = colnames(Hym))
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Hym_Ord_Environment.pdf")
+alpha <- 2.5
+ggplot() +
+  geom_segment(aes(x = 0, y = 0, xend = Factor1 * alpha * 0.95, yend = Factor2 * alpha * 0.95), data = Hym_Sp_Res) +
+  geom_point(aes(x = Factor1, y = Factor2, shape = Type, fill = Dieback, color = Dieback), data = Hym_Site_Res, size = 3) +
+  scale_fill_manual(values=c("chartreuse3", "darkorange1", "brown3")) +
+  scale_color_manual(values=c("chartreuse3", "darkorange1", "brown3")) +
+  scale_shape_manual(values=c(21, 22, 23)) +
+  geom_text_repel(aes(x = Factor1, y = Factor2, label = Plot), data = Hym_Site_Res, size = 2) + 
+  theme_classic()
+dev.off()
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Hym_Ord_District.pdf")
+alpha <- 2.5
+ggplot() +
+  geom_segment(aes(x = 0, y = 0, xend = Factor1 * alpha * 0.95, yend = Factor2 * alpha * 0.95), data = Hym_Sp_Res) +
+  geom_point(aes(x = Factor1, y = Factor2, shape = District, fill = District, color = District), data = Hym_Site_Res, size = 3) +
+  scale_fill_manual(values=c("cadetblue3", "darkorchid4")) +
+  scale_color_manual(values=c("cadetblue3", "darkorchid4")) +
+  scale_shape_manual(values=c(24, 25)) +
+  geom_text_repel(aes(x = Factor1, y = Factor2, label = Plot), data = Hym_Site_Res, size = 2) + 
+  theme_classic()
+dev.off()
+
+
+#########
+#  Lep  #
+#########
+
+
+### correlations between sites
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Lep_Corrplot_Site.pdf")
+corrplot(cor(t(Lep)), diag = FALSE, tl.cex = 0.3)
+dev.off()
+
+### Mvabund object
+
+Lep_mvabund = mvabund(Lep)
+
+Mod_Lep <- manyglm(Lep_mvabund ~ X$Dieback + X$Type + X$District, family="binomial")
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Lep_Mod.pdf")
+plot(Mod_Lep)
+dev.off()
+
+Mod_Lep2 <- manyglm(Lep_mvabund ~ X$Dieback + X$Type + X$District, family=binomial("cloglog"))
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Lep_Mod_2.pdf")
+plot(Mod_Lep2)
+dev.off()
+
+#### Run 10 times to get a range of p-values
+
+anova = anova(Mod_Lep2)
+anova
+
+Mod_Lep2.p.Dieback <- c(0.009, 0.008, 0.011, 0.004, 0.008, 0.011, 0.009, 0.003, 0.010, 0.010)
+Mod_Lep2.p.Type <- c(0.021, 0.023, 0.016, 0.024, 0.009, 0.017, 0.024, 0.02, 0.018, 0.025)
+Mod_Lep2.p.District <- c(0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001)
+
+Mod_Lep2.p.adjust.Dieback <- p.adjust(Mod_Lep2.p.Dieback, method = "holm", n = length(Mod_Lep2.p.Dieback))
+Mod_Lep2.p.adjust.Type <- p.adjust(Mod_Lep2.p.Type, method = "holm", n = length(Mod_Lep2.p.Type))
+Mod_Lep2.p.adjust.District <- p.adjust(Mod_Lep2.p.District, method = "holm", n = length(Mod_Lep2.p.District))
+
+Mod_Lep2.p.adjust.Dieback
+Mod_Lep2.p.adjust.Type
+Mod_Lep2.p.adjust.District
+
+### Ordination
+
+Ord_Lep <- cord(Mod_Lep2)
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Lep_Ord_Raw.pdf")
+plot(Ord_Lep, biplot = TRUE)
+dev.off()
+
+Lep_Site_Res <- data.frame(Ord_Lep$scores, X)
+Lep_Sp_Res <- data.frame(Ord_Lep$loadings, OTUs = colnames(Lep))
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Lep_Ord_Environment.pdf")
+alpha <- 2.5
+ggplot() +
+  geom_segment(aes(x = 0, y = 0, xend = Factor1 * alpha * 0.95, yend = Factor2 * alpha * 0.95), data = Lep_Sp_Res) +
+  geom_point(aes(x = Factor1, y = Factor2, shape = Type, fill = Dieback, color = Dieback), data = Lep_Site_Res, size = 3) +
+  scale_fill_manual(values=c("chartreuse3", "darkorange1", "brown3")) +
+  scale_color_manual(values=c("chartreuse3", "darkorange1", "brown3")) +
+  scale_shape_manual(values=c(21, 22, 23)) +
+  geom_text_repel(aes(x = Factor1, y = Factor2, label = Plot), data = Lep_Site_Res, size = 2) + 
+  theme_classic()
+dev.off()
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Lep_Ord_District.pdf")
+alpha <- 2.5
+ggplot() +
+  geom_segment(aes(x = 0, y = 0, xend = Factor1 * alpha * 0.95, yend = Factor2 * alpha * 0.95), data = Lep_Sp_Res) +
+  geom_point(aes(x = Factor1, y = Factor2, shape = District, fill = District, color = District), data = Lep_Site_Res, size = 3) +
+  scale_fill_manual(values=c("cadetblue3", "darkorchid4")) +
+  scale_color_manual(values=c("cadetblue3", "darkorchid4")) +
+  scale_shape_manual(values=c(24, 25)) +
+  geom_text_repel(aes(x = Factor1, y = Factor2, label = Plot), data = Lep_Site_Res, size = 2) + 
+  theme_classic()
+dev.off()
+
+
+#########
+#  Flo  #
+#########
+
+
+### correlations between sites
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Flo_Corrplot_Site.pdf")
+corrplot(cor(t(Flo)), diag = FALSE, tl.cex = 0.3)
+dev.off()
+
+### Mvabund object
+
+Flo_mvabund = mvabund(Flo)
+
+Mod_Flo <- manyglm(Flo_mvabund ~ X$Dieback + X$Type + X$District, family="binomial")
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Flo_Mod.pdf")
+plot(Mod_Flo)
+dev.off()
+
+Mod_Flo2 <- manyglm(Flo_mvabund ~ X$Dieback + X$Type + X$District, family=binomial("cloglog"))
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Flo_Mod_2.pdf")
+plot(Mod_Flo2)
+dev.off()
+
+#### Run 10 times to get a range of p-values
+
+anova = anova(Mod_Flo2)
+anova
+
+Mod_Flo2.p.Dieback <- c(0.006, 0.003, 0.003, 0.006, 0.004, 0.007, 0.006, 0.006, 0.005, 0.003)
+Mod_Flo2.p.Type <- c(0.05, 0.046, 0.04, 0.04, 0.043, 0.045, 0.05, 0.038, 0.056, 0.045)
+Mod_Flo2.p.District <- c(0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001)
+
+Mod_Flo2.p.adjust.Dieback <- p.adjust(Mod_Flo2.p.Dieback, method = "holm", n = length(Mod_Flo2.p.Dieback))
+Mod_Flo2.p.adjust.Type <- p.adjust(Mod_Flo2.p.Type, method = "holm", n = length(Mod_Flo2.p.Type))
+Mod_Flo2.p.adjust.District <- p.adjust(Mod_Flo2.p.District, method = "holm", n = length(Mod_Flo2.p.District))
+
+Mod_Flo2.p.adjust.Dieback
+Mod_Flo2.p.adjust.Type
+Mod_Flo2.p.adjust.District
+
+### Ordination
+
+Ord_Flo <- cord(Mod_Flo2)
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Flo_Ord_Raw.pdf")
+plot(Ord_Flo, biplot = TRUE)
+dev.off()
+
+Flo_Site_Res <- data.frame(Ord_Flo$scores, X)
+Flo_Sp_Res <- data.frame(Ord_Flo$loadings, OTUs = colnames(Flo))
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Flo_Ord_Environment.pdf")
+alpha <- 2.5
+ggplot() +
+  geom_segment(aes(x = 0, y = 0, xend = Factor1 * alpha * 0.95, yend = Factor2 * alpha * 0.95), data = Flo_Sp_Res) +
+  geom_point(aes(x = Factor1, y = Factor2, shape = Type, fill = Dieback, color = Dieback), data = Flo_Site_Res, size = 3) +
+  scale_fill_manual(values=c("chartreuse3", "darkorange1", "brown3")) +
+  scale_color_manual(values=c("chartreuse3", "darkorange1", "brown3")) +
+  scale_shape_manual(values=c(21, 22, 23)) +
+  geom_text_repel(aes(x = Factor1, y = Factor2, label = Plot), data = Flo_Site_Res, size = 2) + 
+  theme_classic()
+dev.off()
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Flo_Ord_District.pdf")
+alpha <- 2.5
+ggplot() +
+  geom_segment(aes(x = 0, y = 0, xend = Factor1 * alpha * 0.95, yend = Factor2 * alpha * 0.95), data = Flo_Sp_Res) +
+  geom_point(aes(x = Factor1, y = Factor2, shape = District, fill = District, color = District), data = Flo_Site_Res, size = 3) +
+  scale_fill_manual(values=c("cadetblue3", "darkorchid4")) +
+  scale_color_manual(values=c("cadetblue3", "darkorchid4")) +
+  scale_shape_manual(values=c(24, 25)) +
+  geom_text_repel(aes(x = Factor1, y = Factor2, label = Plot), data = Flo_Site_Res, size = 2) + 
+  theme_classic()
+dev.off()
+
+
+#############
+#  Non_Flo  #
+#############
+
+
+### correlations between sites
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Non_Flo_Corrplot_Site.pdf")
+corrplot(cor(t(Non_Flo)), diag = FALSE, tl.cex = 0.3)
+dev.off()
+
+### Mvabund object
+
+Non_Flo_mvabund = mvabund(Non_Flo)
+
+Mod_Non_Flo <- manyglm(Non_Flo_mvabund ~ X$Dieback + X$Type + X$District, family="binomial")
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Non_Flo_Mod.pdf")
+plot(Mod_Non_Flo)
+dev.off()
+
+Mod_Non_Flo2 <- manyglm(Non_Flo_mvabund ~ X$Dieback + X$Type + X$District, family=binomial("cloglog"))
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Non_Flo_Mod_2.pdf")
+plot(Mod_Non_Flo2)
+dev.off()
+
+#### Run 10 times to get a range of p-values
+
+anova = anova(Mod_Non_Flo2)
+anova
+
+Mod_Non_Flo2.p.Dieback <- c(0.004, 0.002, 0.002, 0.002, 0.003, 0.002, 0.003, 0.001, 0.004, 0.001)
+Mod_Non_Flo2.p.Type <- c(0.07, 0.069, 0.06, 0.08, 0.073, 0.08, 0.075, 0.067, 0.062, 0.06)
+Mod_Non_Flo2.p.District <- c(0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001)
+
+Mod_Non_Flo2.p.adjust.Dieback <- p.adjust(Mod_Non_Flo2.p.Dieback, method = "holm", n = length(Mod_Non_Flo2.p.Dieback))
+Mod_Non_Flo2.p.adjust.Type <- p.adjust(Mod_Non_Flo2.p.Type, method = "holm", n = length(Mod_Non_Flo2.p.Type))
+Mod_Non_Flo2.p.adjust.District <- p.adjust(Mod_Non_Flo2.p.District, method = "holm", n = length(Mod_Non_Flo2.p.District))
+
+Mod_Non_Flo2.p.adjust.Dieback
+Mod_Non_Flo2.p.adjust.Type
+Mod_Non_Flo2.p.adjust.District
+
+### Ordination
+
+Ord_Non_Flo <- cord(Mod_Non_Flo2)
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Non_Flo_Ord_Raw.pdf")
+plot(Ord_Non_Flo, biplot = TRUE)
+dev.off()
+
+Non_Flo_Site_Res <- data.frame(Ord_Non_Flo$scores, X)
+Non_Flo_Sp_Res <- data.frame(Ord_Non_Flo$loadings, OTUs = colnames(Non_Flo))
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Non_Flo_Ord_Environment.pdf")
+alpha <- 2.5
+ggplot() +
+  geom_segment(aes(x = 0, y = 0, xend = Factor1 * alpha * 0.95, yend = Factor2 * alpha * 0.95), data = Non_Flo_Sp_Res) +
+  geom_point(aes(x = Factor1, y = Factor2, shape = Type, fill = Dieback, color = Dieback), data = Non_Flo_Site_Res, size = 3) +
+  scale_fill_manual(values=c("chartreuse3", "darkorange1", "brown3")) +
+  scale_color_manual(values=c("chartreuse3", "darkorange1", "brown3")) +
+  scale_shape_manual(values=c(21, 22, 23)) +
+  geom_text_repel(aes(x = Factor1, y = Factor2, label = Plot), data = Non_Flo_Site_Res, size = 2) + 
+  theme_classic()
+dev.off()
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Non_Flo_Ord_District.pdf")
+alpha <- 2.5
+ggplot() +
+  geom_segment(aes(x = 0, y = 0, xend = Factor1 * alpha * 0.95, yend = Factor2 * alpha * 0.95), data = Non_Flo_Sp_Res) +
+  geom_point(aes(x = Factor1, y = Factor2, shape = District, fill = District, color = District), data = Non_Flo_Site_Res, size = 3) +
+  scale_fill_manual(values=c("cadetblue3", "darkorchid4")) +
+  scale_color_manual(values=c("cadetblue3", "darkorchid4")) +
+  scale_shape_manual(values=c(24, 25)) +
+  geom_text_repel(aes(x = Factor1, y = Factor2, label = Plot), data = Non_Flo_Site_Res, size = 2) + 
+  theme_classic()
+dev.off()
+
+
+#########
+#  Par  #
+#########
+
+
+### correlations between sites
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Par_Corrplot_Site.pdf")
+corrplot(cor(t(Par)), diag = FALSE, tl.cex = 0.3)
+dev.off()
+
+### Mvabund object
+
+Par_mvabund = mvabund(Par)
+
+Mod_Par <- manyglm(Par_mvabund ~ X$Dieback + X$Type + X$District, family="binomial")
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Par_Mod.pdf")
+plot(Mod_Par)
+dev.off()
+
+Mod_Par2 <- manyglm(Par_mvabund ~ X$Dieback + X$Type + X$District, family=binomial("cloglog"))
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Par_Mod_2.pdf")
+plot(Mod_Par2)
+dev.off()
+
+#### Run 10 times to get a range of p-values
+
+anova = anova(Mod_Par2)
+anova
+
+Mod_Par2.p.Dieback <- c(0.004, 0.005, 0.007, 0.008, 0.001, 0.002, 0.002, 0.004, 0.004, 0.003)
+Mod_Par2.p.Type <- c(0.016, 0.26, 0.028, 0.029, 0.026, 0.026, 0.028, 0.033, 0.024, 0.026)
+Mod_Par2.p.District <- c(0.001, 0/001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001)
+
+Mod_Par2.p.adjust.Dieback <- p.adjust(Mod_Par2.p.Dieback, method = "holm", n = length(Mod_Par2.p.Dieback))
+Mod_Par2.p.adjust.Type <- p.adjust(Mod_Par2.p.Type, method = "holm", n = length(Mod_Par2.p.Type))
+Mod_Par2.p.adjust.District <- p.adjust(Mod_Par2.p.District, method = "holm", n = length(Mod_Par2.p.District))
+
+Mod_Par2.p.adjust.Dieback
+Mod_Par2.p.adjust.Type
+Mod_Par2.p.adjust.District
+
+### Ordination
+
+Ord_Par <- cord(Mod_Par2)
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Par_Ord_Raw.pdf")
+plot(Ord_Par, biplot = TRUE)
+dev.off()
+
+Par_Site_Res <- data.frame(Ord_Par$scores, X)
+Par_Sp_Res <- data.frame(Ord_Par$loadings, OTUs = colnames(Par))
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Par_Ord_Environment.pdf")
+alpha <- 2.5
+ggplot() +
+  geom_segment(aes(x = 0, y = 0, xend = Factor1 * alpha * 0.95, yend = Factor2 * alpha * 0.95), data = Par_Sp_Res) +
+  geom_point(aes(x = Factor1, y = Factor2, shape = Type, fill = Dieback, color = Dieback), data = Par_Site_Res, size = 3) +
+  scale_fill_manual(values=c("chartreuse3", "darkorange1", "brown3")) +
+  scale_color_manual(values=c("chartreuse3", "darkorange1", "brown3")) +
+  scale_shape_manual(values=c(21, 22, 23)) +
+  geom_text_repel(aes(x = Factor1, y = Factor2, label = Plot), data = Par_Site_Res, size = 2) + 
+  theme_classic()
+dev.off()
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Par_Ord_District.pdf")
+alpha <- 2.5
+ggplot() +
+  geom_segment(aes(x = 0, y = 0, xend = Factor1 * alpha * 0.95, yend = Factor2 * alpha * 0.95), data = Par_Sp_Res) +
+  geom_point(aes(x = Factor1, y = Factor2, shape = District, fill = District, color = District), data = Par_Site_Res, size = 3) +
+  scale_fill_manual(values=c("cadetblue3", "darkorchid4")) +
+  scale_color_manual(values=c("cadetblue3", "darkorchid4")) +
+  scale_shape_manual(values=c(24, 25)) +
+  geom_text_repel(aes(x = Factor1, y = Factor2, label = Plot), data = Par_Site_Res, size = 2) + 
+  theme_classic()
+dev.off()
+
+
+#############
+#  Non_Par  #
+#############
+
+
+### correlations between sites
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Non_Par_Corrplot_Site.pdf")
+corrplot(cor(t(Non_Par)), diag = FALSE, tl.cex = 0.3)
+dev.off()
+
+### Mvabund object
+
+Non_Par_mvabund = mvabund(Non_Par)
+
+Mod_Non_Par <- manyglm(Non_Par_mvabund ~ X$Dieback + X$Type + X$District, family="binomial")
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Non_Par_Mod.pdf")
+plot(Mod_Non_Par)
+dev.off()
+
+Mod_Non_Par2 <- manyglm(Non_Par_mvabund ~ X$Dieback + X$Type + X$District, family=binomial("cloglog"))
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Non_Par_Mod_2.pdf")
+plot(Mod_Non_Par2)
+dev.off()
+
+#### Run 10 times to get a range of p-values
+
+anova = anova(Mod_Non_Par2)
+anova
+
+Mod_Non_Par2.p.Dieback <- c(0.002, 0.005, 0.002, 0.004, 0.004, 0.004, 0.006, 0.002, 0.002, 0.005)
+Mod_Non_Par2.p.Type <- c(0.070, 0.079, 0.072, 0.071, 0.074, 0.074, 0.091, 0.063, 0.089, 0.063)
+Mod_Non_Par2.p.District <- c(0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001)
+
+Mod_Non_Par2.p.adjust.Dieback <- p.adjust(Mod_Non_Par2.p.Dieback, method = "holm", n = length(Mod_Non_Par2.p.Dieback))
+Mod_Non_Par2.p.adjust.Type <- p.adjust(Mod_Non_Par2.p.Type, method = "holm", n = length(Mod_Non_Par2.p.Type))
+Mod_Non_Par2.p.adjust.District <- p.adjust(Mod_Non_Par2.p.District, method = "holm", n = length(Mod_Non_Par2.p.District))
+
+Mod_Non_Par2.p.adjust.Dieback
+Mod_Non_Par2.p.adjust.Type
+Mod_Non_Par2.p.adjust.District
+
+### Ordination
+
+Ord_Non_Par <- cord(Mod_Non_Par2)
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Non_Par_Ord_Raw.pdf")
+plot(Ord_Non_Par, biplot = TRUE)
+dev.off()
+
+Non_Par_Site_Res <- data.frame(Ord_Non_Par$scores, X)
+Non_Par_Sp_Res <- data.frame(Ord_Non_Par$loadings, OTUs = colnames(Non_Par))
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Non_Par_Ord_Environment.pdf")
+alpha <- 2.5
+ggplot() +
+  geom_segment(aes(x = 0, y = 0, xend = Factor1 * alpha * 0.95, yend = Factor2 * alpha * 0.95), data = Non_Par_Sp_Res) +
+  geom_point(aes(x = Factor1, y = Factor2, shape = Type, fill = Dieback, color = Dieback), data = Non_Par_Site_Res, size = 3) +
+  scale_fill_manual(values=c("chartreuse3", "darkorange1", "brown3")) +
+  scale_color_manual(values=c("chartreuse3", "darkorange1", "brown3")) +
+  scale_shape_manual(values=c(21, 22, 23)) +
+  geom_text_repel(aes(x = Factor1, y = Factor2, label = Plot), data = Non_Par_Site_Res, size = 2) + 
+  theme_classic()
+dev.off()
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Non_Par_Ord_District.pdf")
+alpha <- 2.5
+ggplot() +
+  geom_segment(aes(x = 0, y = 0, xend = Factor1 * alpha * 0.95, yend = Factor2 * alpha * 0.95), data = Non_Par_Sp_Res) +
+  geom_point(aes(x = Factor1, y = Factor2, shape = District, fill = District, color = District), data = Non_Par_Site_Res, size = 3) +
+  scale_fill_manual(values=c("cadetblue3", "darkorchid4")) +
+  scale_color_manual(values=c("cadetblue3", "darkorchid4")) +
+  scale_shape_manual(values=c(24, 25)) +
+  geom_text_repel(aes(x = Factor1, y = Factor2, label = Plot), data = Non_Par_Site_Res, size = 2) + 
+  theme_classic()
+dev.off()
+
+```
+
+## Heatmaps
+
+```{r Heatmaps, echo=FALSE}
+### Data import and Data handling
+
+otu_Dieback <- read.csv("OTU_Boot_Dieback.csv", sep = ";", h = T, row.names = 1)
+head(otu_Dieback)
+
+tax_Dieback <- read.csv("OTU_Boot_Taxo.csv", sep = ";", h = T, row.names = 1)
+head(tax_Dieback)
+
+class(otu_Dieback)
+otumat_Dieback <- as.matrix(otu_Dieback)
+class(tax_Dieback)
+taxmat_Dieback <- as.matrix(tax_Dieback)
+
+otu_Site <- read.csv("OTU_Boot_Site.csv", sep = ";", h = T, row.names = 1)
+head(otu_Site)
+
+tax_Site <- read.csv("OTU_Boot_Taxo.csv", sep = ";", h = T, row.names = 1)
+head(tax_Site)
+
+class(otu_Site)
+otumat_Site <- as.matrix(otu_Site)
+class(tax_Site)
+taxmat_Site <- as.matrix(tax_Site)
+
+
+### Dieback
+
+
+otu_Dieback_final = otu_table(otumat_Dieback, taxa_are_rows = TRUE)
+tax_Dieback_final = tax_table(taxmat_Dieback)
+
+physeq_Dieback = phyloseq(otu_Dieback_final, tax_Dieback_final)
+physeq_Dieback
+
+random_tree_Dieback = rtree(ntaxa(physeq_Dieback), rooted=TRUE, tip.label=taxa_names(physeq_Dieback))
+physeq_Dieback_tree <-merge_phyloseq(physeq_Dieback, random_tree_Dieback)
+
+physeq_Dieback_final_2 <- phyloseq(otu_Dieback_final, tax_Dieback_final, random_tree_Dieback)
+physeq_Dieback_final_2
+identical(physeq_Dieback_tree, physeq_Dieback_final_2)
+
+
+#plot_tree(physeq_Dieback_final_1, color="sample", label.tips="order", ladderize="left", plot.margin=0.3)
+#plot_tree(physeq_Dieback_final_1, color="sample", label.tips="family", ladderize="left", plot.margin=0.3)
+#plot_tree(physeq_Dieback_final_1, color="sample", label.tips="taxa_names", ladderize="left", plot.margin=0.3)
+#plot_heatmap(physeq_Dieback_final_1, "HMSC", "bray", taxa.label = "order", taxa.order = "family", sample.order = c("Low", "Medium", "High"), low="#000033", high="#FF3300")
+#plot_heatmap(physeq_Dieback_final_1, "HMSC", "bray", taxa.label = "family", taxa.order = "family", sample.order = c("Low", "Medium", "High"), low="#000033", high="#FF3300")
+
+physeq_Dieback_ordered <- prune_taxa(names(sort(taxa_sums(physeq_Dieback_tree), TRUE)[1:2972]), physeq_Dieback_tree)
+plot_heatmap(physeq_Dieback_ordered, taxa.label = "taxa_names", sample.order = c("Low", "Medium", "High"), low="#000033", high="#FF3300")
+
+
+### District
+
+
+otu_Site_final = otu_table(otumat_Site, taxa_are_rows = TRUE)
+tax_Site_final = tax_table(taxmat_Site)
+
+physeq_Site = phyloseq(otu_Site_final, tax_Site_final)
+physeq_Site
+
+random_tree_Site = rtree(ntaxa(physeq_Site), rooted=TRUE, tip.label=taxa_names(physeq_Site))
+physeq_Site_tree <-merge_phyloseq(physeq_Site, random_tree_Site)
+
+physeq_Site_final_2 <- phyloseq(otu_Site_final, tax_Site_final, random_tree_Site)
+physeq_Site_final_2
+identical(physeq_Site_tree, physeq_Site_final_2)
+
+
+#plot_tree(physeq_Site_final_1, color="sample", label.tips="order", ladderize="left", plot.margin=0.3)
+#plot_tree(physeq_Site_final_1, color="sample", label.tips="family", ladderize="left", plot.margin=0.3)
+#plot_tree(physeq_Site_final_1, color="sample", label.tips="taxa_names", ladderize="left", plot.margin=0.3)
+#plot_heatmap(physeq_Site_final_1, "HMSC", "bray", taxa.label = "order", taxa.order = "family", sample.order = c("Low", "Medium", "High"), low="#000033", high="#FF3300")
+#plot_heatmap(physeq_Site_final_1, "HMSC", "bray", taxa.label = "family", taxa.order = "family", sample.order = c("Low", "Medium", "High"), low="#000033", high="#FF3300")
+
+physeq_Site_ordered <- prune_taxa(names(sort(taxa_sums(physeq_Site_tree), TRUE)[1:2972]), physeq_Site_tree)
+plot_heatmap(physeq_Site_ordered, taxa.label = "taxa_names", sample.order = c("Aure", "Sault", "Total"), low="#00180c", high="#FFFF66")
+```
+
+## TraitGLM
+
+```{r TraitGLM, echo=FALSE}
+### Data import
+
+X = read.csv2("X.csv")
+
+Total <- read.csv2("Tot.csv")
+Tot <- Total[,5:2976]
+Tot <- pmin(as.matrix(Tot),1)
+
+Tot_Trait <- read.csv2("Tot_Trait.csv", row.names = colnames(Tot))
+
+Functional_Group <- read.csv2("Functional_Group.csv")
+Func <- Functional_Group[,5:2509]
+Func <- pmin(as.matrix(Func),1)
+
+Func_Trait <- read.csv2("Functional_Group_Trait.csv", row.names = colnames(Func))
+
+###########
+#  Total  #
+###########
+
+### TraitGLM
+
+Tot_Dieback_4 <- traitglm(Tot, X$Dieback, Tot_Trait, method = "glm1path")
+Tot_Dieback_4$fourth
+anova(Tot_Dieback_4)
+
+Tot_Type_4 <- traitglm(Tot, X$Type, Tot_Trait, method = "glm1path")
+Tot_Type_4$fourth
+anova(Tot_Type_4)
+
+### Heatmaps
+
+a1 <- max(abs(Tot_Dieback_4$fourth.corner))
+a2 <- max(abs(Tot_Type_4$fourth.corner))
+colort <- colorRampPalette(c("blue","white","red"))
+
+Tot_4_graph1 <- levelplot(t(as.matrix(Tot_Dieback_4$fourth.corner)), xlab="Dieback level",
+                     ylab= "Groups", col.regions=colort(100), at=seq(-a1, a1, length=100),
+                     scales = list( x= list(rot = 45), tck = c(1,0)))
+
+
+Tot_4_graph2 <- levelplot(t(as.matrix(Tot_Type_4$fourth.corner)), xlab="Forest type",
+                     ylab= NULL, col.regions=colort(100), at=seq(-a2, a2, length=100),
+                     scales = list(x = list(rot = 45), tck = c(1,0)))
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Tot_TraitGLM.pdf")
+grid.arrange(Tot_4_graph1, Tot_4_graph2, ncol = 2)
+dev.off()
+
+#######################
+#  Functional Groups  #
+#######################
+
+### TraitGLM
+
+Func_Dieback_4 <- traitglm(Func, X$Dieback, Func_Trait, method = "glm1path")
+Func_Dieback_4$fourth
+anova(Func_Dieback_4)
+
+Func_Type_4 <- traitglm(Func, X$Type, Func_Trait, method = "glm1path")
+Func_Type_4$fourth
+anova(Func_Type_4)
+
+### Heatmaps
+
+a1 <- max(abs(Func_Dieback_4$fourth.corner))
+a2 <- max(abs(Func_Type_4$fourth.corner))
+colort <- colorRampPalette(c("blue","white","red"))
+
+Func_4_graph1 <- levelplot(t(as.matrix(Func_Dieback_4$fourth.corner)), xlab="Dieback level",
+                          ylab= "Groups", col.regions=colort(100), at=seq(-a1, a1, length=100),
+                          scales = list( x= list(rot = 45), tck = c(1,0)))
+
+
+Func_4_graph2 <- levelplot(t(as.matrix(Func_Type_4$fourth.corner)), xlab="Forest type",
+                          ylab= NULL, col.regions=colort(100), at=seq(-a2, a2, length=100),
+                          scales = list(x = list(rot = 45), tck = c(1,0)))
+
+pdf(file = "/usr/home/biopatic/sire/statistics/figures/Func_TraitGLM.pdf")
+grid.arrange(Func_4_graph1, Func_4_graph2, ncol = 2)
+dev.off()
+```
+
+## IndVal
+
+```{r IndVal, echo=FALSE}
+### Data import and Data handling
+
+Indic_Low = read.csv2("Indic_Sp_Low.csv")
+Indic_Low_Matrix <- as.matrix(Indic_Low)
+
+Indic_Med = read.csv2("Indic_Sp_Medium.csv")
+Indic_Med_Matrix <- as.matrix(Indic_Med)
+
+Indic_High = read.csv2("Indic_Sp_High.csv")
+Indic_High_Matrix <- as.matrix(Indic_High)
+
+
+### IndVal
+
+
+IndVal_dieback <- multipatt(Total[,5:2976], X$Dieback, func="IndVal", duleg=T, control=how(nperm=999))
+IndVal_dieback
+IndVal <- capture.output(summary(IndVal_dieback, indvalcomp=TRUE))
+
+write.csv(IndVal, file = "indval.csv", row.names = F)
+
+# Values recovered separated manually in 3 different files (Indic_Sp_Low.csv, Indic_Sp_Medium.csv, Indic_Sp_High.csv)
+
+
+### Run loop changing values for each of the 3 different files, accordingly
+for (i in 1:8) {
+  p_values <- unlist(as.numeric(Indic_High[i,2:11]))
+  indic_high.p.adjust <- p.adjust(p_values, method = "holm", n = 10)
+  Indic_High
+}
+```

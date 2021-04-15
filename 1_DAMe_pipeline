@@ -1,0 +1,583 @@
+#!/bin/bash
+set -e
+set -u
+set -o pipefail
+
+##########################################################################################################
+##########################################################################################################
+# Shell script for metabarcoding:  Schirmer et al (2015, NAR) + Zepeda-Mendoza et al (2016) DAMe pipeline
+##########################################################################################################
+##########################################################################################################
+
+##### ------------------------------------------------------------------------
+# Shell script to prepare raw sequencing data
+
+PIPESTART=$(date)
+echo "Pipeline started on" ${PIPESTART}
+
+### ------------------------------------------------------------------------
+## Variables
+
+SUMASIM=97 # sumaclust similarity in percentage (0-100, e.g. 97)
+echo "Sumaclust similarity percentage is" ${SUMASIM}"%."
+
+MINPCR=3 # min contig length after assembly if i'm not running as a bash script
+MINREADS=3 # min contig length after assembly if i'm not running as a bash script
+MINLEN=300
+MAXLEN=320
+PCRRXNS=3
+POOLS=3
+ARTHMINPROB=0.8
+EXPERIMENT=ABC
+
+# N.B. ------------------------------------------------------------------------
+# For R script analyses, change potential setup in R scripts in accordance to the shell variables
+
+HOMEFOLDER="/Users/21202701t/CLIMTREE/Malaise/"
+echo "Home folder is" ${HOMEFOLDER}
+
+SEQS="data/seqs"
+ANALYSIS="analysis/"
+DAME="/usr/local/bin/DAMe/bin/"
+
+### ------------------------------------------------------------------------
+## Assert.sh
+
+# install assert.sh
+# cd ${HOMEFOLDER}scripts
+# git clone https://github.com/torokmark/assert.sh.git
+
+cd ${HOMEFOLDER}scripts/assert.sh/; source './assert.sh'  # assert.sh code, the folder for which I've downloaded into my scripts/ folder.  See https://github.com/torokmark/assert.sh for syntax
+cd ${HOMEFOLDER}${SEQS} # cd into the sequence folder
+
+find * -maxdepth 0 -name "*_R1.fastq.gz" > samplelist.txt  # find all files ending with _L001_*1_001_fastq.gz / Call half of the files just to recover the prefix with basename in the loops. No need to call all files processed into DAMe
+sample_info=samplelist.txt # put samplelist.txt into variable
+sample_names=($(cut -f 1 "${sample_info}" | uniq)) # convert variable to array this way
+
+echo "There are" "${#sample_names[@]}" "samples that will be processed:  " "${sample_names[@]}" # echo number of elements in the array
+
+### ------------------------------------------------------------------------
+## AdapterRemoval
+
+# Trim Illumina sequencing adapters
+
+# install AdapterRemoval
+# brew install adapterremoval
+# or download from https://github.com/MikkelSchubert/adapterremoval
+
+# loop over all samples for trimming adapters
+
+for sample in "${sample_names[@]}"  # ${sample_names[@]} is the full bash array.  So loop over all samples
+do
+              sample_prefix="$(basename $sample "_R1.fastq.gz")"
+              echo ${sample_prefix}
+              AdapterRemoval --file1 ${sample_prefix}_R1.fastq.gz --file2 ${sample_prefix}_R2.fastq.gz --basename Adaptermv${sample_prefix} --trimns
+done
+
+### ------------------------------------------------------------------------
+## Sickle
+
+# Correct error strategies and identify quality trimming
+
+# install Sickle
+# brew install sickle
+# or download from https://github.com/najoshi/sickle
+    # cd sickle-master
+    # make
+    # sudo cp sickle /usr/local/bin
+
+# sickle -h
+
+# loop over all samples and trim for quality
+
+for sample in "${sample_names[@]}"  # ${sample_names[@]} is the full bash array.  So loop over all samples
+do
+              sample_prefix="$( basename $sample "_R1.fastq.gz")"
+              echo ${sample_prefix} >> sickle.out
+              echo ${sample_prefix}
+              sickle pe -f Adaptermv${sample_prefix}.pair1.truncated -r Adaptermv${sample_prefix}.pair2.truncated -o sickle_${sample_prefix}_R1.fq -p sickle_${sample_prefix}_R2.fq -t sanger -s sickle_Single${sample_prefix}.fq >> sickle.out
+done
+
+rm Adaptermv*.* # remove the AdapterRemoval files
+
+### ------------------------------------------------------------------------
+## SPAdes
+
+# Correct errors via BayesHammer
+
+# install SPAdes
+# download from http://cab.spbu.ru/software/spades/
+    # sudo cp -r SPAdes-3.10.1 /usr/local/bin
+# or
+    # brew install brewsci/science/spades
+
+# loop over all samples and apply BayesHammer error correction. Each file takes around 45 mins
+
+for sample in "${sample_names[@]}"  # ${sample_names[@]} is the full bash array.  So loop over all samples
+do
+              sample_prefix="$( basename $sample "_R1.fastq.gz")"
+              echo ${sample_prefix}
+              date
+              # spades.py --only-error-correction -1 sickle_${sample_prefix}_R1.fq -2 sickle_${sample_prefix}_R2.fq -s sickle_Single${sample_prefix}.fq -o SPAdes_hammer${sample_prefix}
+              spades.py --only-error-correction -1 sickle_${sample_prefix}_R1.fq -2 sickle_${sample_prefix}_R2.fq -o SPAdes_hammer${sample_prefix} # don't denoise the unpaired reads
+              date
+done
+
+rm sickle_*.fq # remove the sickle files
+
+### ------------------------------------------------------------------------
+## PANDAseq
+
+# Pair reads using read overlapping
+
+# install PANDAseq
+# download from https://github.com/neufeld/pandaseq/releases
+    # PANDAseq-2.11.pkg
+# or
+    # brew install brewsci/science/pandaseq
+
+# loop over all samples and apply BayesHammer error correction. Each file takes around 15 secs
+
+for sample in "${sample_names[@]}"  # ${sample_names[@]} is the full bash array.  So loop over all samples
+do
+    sample_prefix="$( basename $sample "_R1.fastq.gz")"
+    echo ${sample_prefix}
+    date
+    pandaseq -f SPAdes_hammer${sample_prefix}/corrected/sickle_${sample_prefix}_R1.00.0_0.cor.fastq.gz -r SPAdes_hammer${sample_prefix}/corrected/sickle_${sample_prefix}_R2.00.0_0.cor.fastq.gz -A simple_bayesian -d bfsrk -F -N -T 7 -g pandaseq_log_${sample_prefix}.txt -w sickle_cor_panda_${sample_prefix}.fastq
+    date
+
+                  # -A simple_bayesian # algorithm used in the original paper for pandaseq
+                  # -F # output fastq file
+                  # -N # eliminate all sequences with unknown nucleotides in the output
+                  # -T 7 # use 7 threads
+                  # -g pandaseq_log_${sample_prefix}.txt # output to this log file
+                  # -d bfsrk # don't log this information (this set stops all logging)
+
+done
+
+# N.B. ---------------------------------------------------------------------
+# can replace the below with a parallel version. test command with --dryrun.  run for real without --dryrun
+# However, this version uses the * wildcard, so it's not as precise as the loop
+# find ./sickle_cor_panda_*.fastq -type f | parallel --dryrun gzip {}
+
+### ------------------------------------------------------------------------
+## formatting
+
+# gzip the final fastq files
+
+for sample in "${sample_names[@]}"  # ${sample_names[@]} is the full bash array.  So loop over all samples
+do
+    sample_prefix="$( basename $sample "_R1.fastq.gz")"
+    echo ${sample_prefix}
+    gzip sickle_cor_panda_${sample_prefix}.fastq
+done
+
+
+rm -rf SPAdes_hammer*/ # remove SPAdes output
+
+rm pandaseq_log_*.txt # remove pandaseq_log_txt files
+
+##########################################################################################################
+##########################################################################################################
+# DAMe pipeline part: Zepeda-Mendoza et al (2016)
+##########################################################################################################
+##########################################################################################################
+
+##### ------------------------------------------------------------------------
+# DAMe pipeline
+
+# Filtration of bad reads using PCR replicates and read numbers
+
+### ------------------------------------------------------------------------
+## 1. Place libraries in different folders
+
+for sample in "${sample_names[@]}"  # "${sample_names[@]}" is the full bash array.  So loop over all samples
+do
+    sample_prefix="$( basename ${sample} "_R1.fastq.gz")"
+    echo ${sample_prefix}
+    mkdir folder_${sample_prefix}
+    mv sickle_cor_panda_${sample_prefix}.fastq.gz folder_${sample_prefix}/
+done
+
+### ------------------------------------------------------------------------
+## 2. Sort through each fastq file and determine how many of each tag pair is in each fastq file. Each fastq file takes around 5 min
+
+for sample in "${sample_names[@]}"  # ${sample_names[@]} is the full bash array.  So loop over all samples
+do
+              sample_prefix="$( basename $sample "_R1.fastq.gz")"
+              cd ${HOMEFOLDER}data/seqs # starting point
+              echo ${sample_prefix}
+              cd folder_${sample_prefix}
+              python ${DAME}sort.py -fq sickle_cor_panda_${sample_prefix}.fastq.gz -p ${HOMEFOLDER}data/Primers_COILeray.txt -t ${HOMEFOLDER}data/Tags_COI.txt
+
+              # ls -lhS > sizesort_folder_${sample_prefix}.txt # quick check if the twin tag files are the largest.
+              # sort by size.  The largest files should all be twin tag files (e.g. Tag1_Tag1.txt). Superseded by splitSummaryByPSInfo.py
+
+done
+
+### ------------------------------------------------------------------------
+## 3. Tagged-primer quality checking
+
+# Place PCR replicates (1, 2, 3) of the same experiment (e.g. A, B, C) in the same folder and rename to pool {1,2,3}
+
+# The three PCR replicate folders (on which sort.py was run) have to be in the same folder (e.g. 'folderA') and named 'pool1', 'pool2', and 'pool3'. No other pool folders
+
+cd ${HOMEFOLDER}data/seqs
+
+for sample in "${sample_names[@]}"  # ${sample_names[@]} is the full bash array.  So loop over all samples
+do
+              sample_prefix="$( basename $sample "_R1.fastq.gz")"
+              echo ${sample_prefix} | cut -c 1-2
+              # echo "${sample_prefix}" | cut -c n # selects out the nth character from sample_prefix
+              sample_prefix_prefix="$(echo "${sample_prefix}" | cut -c 1)"  # e.g. A is a sample_prefix_prefix
+              sample_prefix_pool="$(echo "${sample_prefix}" | cut -c 2)"  # e.g. 1 is a sample_prefix_pool
+              if [ ! -d folder${sample_prefix_prefix} ] # if directory folder${sample_prefix_prefix} does not exist
+              then
+              	mkdir folder${sample_prefix_prefix}/  # make a folder with sample prefix
+              fi
+              mv folder_${sample_prefix}/ folder${sample_prefix_prefix}/pool${sample_prefix_pool}
+done
+
+## 3.1 Sort SummaryCounts.txt to SummaryCountsSorted.txt (Bohmann code)
+
+cd ${HOMEFOLDER}data/seqs
+for sample in "${sample_names[@]}"  # ${sample_names[@]} is the full bash array.  So loop over all samples
+do
+              sample_prefix="$( basename $sample "_R1.fastq.gz")"
+              cd ${HOMEFOLDER}data/seqs
+              sample_prefix_prefix="$(echo "${sample_prefix}" | cut -c 1)"  # e.g. A is a sample_prefix_prefix
+              sample_prefix_pool="$(echo "${sample_prefix}" | cut -c 2)"  # e.g. 1 is a sample_prefix_pool
+              cd folder${sample_prefix_prefix}/pool${sample_prefix_pool}  # cd into each pool (e.g. folderA/pool1)
+              head -1 SummaryCounts.txt > SummaryCounts_sorted_Folder${sample_prefix_prefix}_Pool${sample_prefix_pool}.txt
+              tail -n +2 SummaryCounts.txt | sed "s/Tag//g" | sort -k1,1n -k2,2n | awk 'BEGIN{OFS="\t";}{$1="Tag"$1;$2="Tag"$2; print $0;}' >> SummaryCounts_sorted_Folder${sample_prefix_prefix}_Pool${sample_prefix_pool}.txt
+              date
+done
+
+## 3.1.1 Move SummaryCounts_sorted*.txt files from inside pool folders into sample Folders
+
+# find * -maxdepth 0 -name "*_L001_R1_001.fastq.gz" > samplelist.txt
+
+# find all files ending with _L001_R1_001_fastq.gz
+
+cd ${HOMEFOLDER}data/seqs
+sample_libs=($(cat samplelist.txt | cut -c 1 | uniq))  # cut out all but the first letter of each filename and keep unique values, samplelist.txt should already exist
+echo "There are" "${#sample_libs[@]}" "samples that will be processed:"  "${sample_libs[@]}" # echo number and name of elements in the array
+
+# can replace the below with parallel syntax
+
+# parallel echo "Moved SummaryCounts_sorted_Folder{1}_Pool{2}.txt" ::: ${sample_libs[@]} ::: `seq 1 ${POOLS}`
+
+cd ${HOMEFOLDER}data/seqs
+for sample in "${sample_libs[@]}"  # ${sample_libs[@]} is the full bash array: A,B,C.  So loop over all samples
+do
+              for pool in `seq 1 ${POOLS}`
+              do
+                            echo "Moved SummaryCounts_sorted_Folder${sample}_Pool${pool}.txt"
+                            mv folder${sample}/pool${pool}/SummaryCounts_sorted_Folder${sample}_Pool${pool}.txt folder${sample}
+              done
+done
+
+## 3.2 Make tag combinations overview:  splitSummaryByPSInfo.py (Bohmann code)
+
+# In the output file, the term "was used" means that the tag pair is in the PSInfo file (i.e. pair used in PCR)
+
+cd ${HOMEFOLDER}data/seqs
+
+for sample in "${sample_names[@]}"  # ${sample_names[@]} is the full bash array.  So loop over all samples
+do
+              sample_prefix="$( basename $sample "_R1.fastq.gz")"
+              cd ${HOMEFOLDER}data/seqs
+              sample_prefix_prefix="$(echo "${sample_prefix}" | cut -c 1)"  # e.g. A is a sample_prefix_prefix
+              sample_prefix_pool="$(echo "${sample_prefix}" | cut -c 2)"  # e.g. 1 is a sample_prefix_pool
+              # cd folder${sample_prefix_prefix_short}/pool${sample_prefix_pool_short}  # cd into each pool (e.g. folderA/pool1)
+              cd folder${sample_prefix_prefix} # cd into each folder (e.g. folderA)
+              python ${DAME}splitSummaryByPSInfo.py -p ${HOMEFOLDER}data/PSinfo_COI${sample_prefix_prefix}.txt -l ${sample_prefix_pool} -s pool${sample_prefix_pool}/SummaryCounts.txt -o splitSummaryByPSInfo_Folder${sample_prefix_prefix}_Pool${sample_prefix_pool}.txt
+              date
+done
+
+# 3.3 Run scripts/heatmap.R on the different pools.
+
+Rscript --vanilla --verbose ${HOMEFOLDER}scripts/1.1_heatmap.R
+
+# then move heatmaps from inside pool folders into sample Folders
+
+cd ${HOMEFOLDER}data/seqs
+for sample in "${sample_libs[@]}"  # ${sample_libs[@]} is the full bash array: A,B,C.  So loop over all samples
+do
+              for pool in `seq 1 ${POOLS}`
+              do
+                            mv folder${sample}/pool${pool}/heatmap_Folder${sample}_Pool${pool}.pdf folder${sample}
+              done
+done
+
+### ------------------------------------------------------------------------
+## 4. Filter
+
+# 4.1 RSI test PCR replicate similarity.  First filter.py at -y 1 -t 1, to keep all sequences, then run RSI.py on the pools
+
+# This step is slow (~ 1.3 hrs per library).  Run multiple jobs at once using parallel.
+
+cd ${HOMEFOLDER}data/seqs
+
+# python ${DAME}filter.py -h
+# MINPCR= # min number of PCRs that a sequence has to appear in
+# MINREADS= # min number of copies per sequence per PCR
+
+# confirm MINPCR and MINREADS values
+
+echo "For RSI analysis, all sequences are kept: appear in just ${MINPCR} PCR, with just ${MINREADS} read per PCR."
+
+# This bit of code to make sample_libs[] exists above too (SummaryCountsSorted.txt). Running here again too, in casen this loop runs independently
+
+# Read in sample list and make a bash array of the sample libraries (A, B, C)
+
+# find * -maxdepth 0 -name "*_L001_R1_001.fastq.gz" > samplelist.txt  # find all files ending with _L001_R1_001_fastq.gz
+
+sample_libs=($(cat samplelist.txt | cut -c 1 | uniq))  # cut out all but the first letter of each filename and keep unique values, samplelist.txt should already exist
+echo "There are" "${#sample_libs[@]}" "samples that will be processed:"  "${sample_libs[@]}" # echo number and name of elements in the array
+
+
+# install GNU parallel
+              # brew install parallel
+
+# mkdir in parallel
+
+cd ${HOMEFOLDER}data/seqs
+parallel mkdir folder{1}/Filter_min${MINPCR}PCRs_min${MINREADS}copies_{1} ::: "${sample_libs[@]}"
+
+rm filter1_1_commands.txt # ensure no filter1_1_commands.txt file is present
+
+# create a list of commands with the correct arguments, using echo "command syntax"
+
+for sample in "${sample_libs[@]}"  # ${sample_libs[@]} is the full bash array: A,B,C.  So loop over all samples
+do
+              echo "cd folder${sample}; \
+              python ${DAME}filter.py -psInfo ${HOMEFOLDER}data/PSinfo_COI${sample}.txt -x ${PCRRXNS} -y ${MINPCR} -p ${POOLS} -t ${MINREADS} -l ${MINLEN} -o Filter_min${MINPCR}PCRs_min${MINREADS}copies_${sample}; \
+              python ${DAME}RSI.py --explicit -o RSI_output_${sample}.txt Filter_min${MINPCR}PCRs_min${MINREADS}copies_${sample}/Comparisons_${PCRRXNS}PCRs.txt" \
+              >> filter1_1_commands.txt
+done
+
+# run parallel --dryrun to see the commands that will be run, without actually running them.
+              parallel -k --dryrun :::: filter1_1_commands.txt
+
+# run the command for real
+
+date
+              parallel --jobs 6 -k :::: filter1_1_commands.txt  # parallel :::: filter1_1_commands.txt means that the commands come from filter1_1_commands.txt
+date
+
+rm filter1_1_commands.txt # ensure no filter1_1_commands.txt file is present
+
+# 4.2 plotLengthFreqMetrics_perSample.py and reads per sample per pool
+
+# python ${DAME}plotLengthFreqMetrics_perSample.py -h
+
+cd ${HOMEFOLDER}data/seqs
+
+for sample in "${sample_libs[@]}"  # ${sample_libs[@]} is the full bash array: A,B,C.  So loop over all samples
+do
+              cd ${HOMEFOLDER}data/seqs
+              cd folder${sample}/Filter_min${MINPCR}PCRs_min${MINREADS}copies_${sample} # cd into folderA,B,C,D,E,F/filter_output
+              echo "Analysing: folder"${sample}/Filter_min${MINPCR}PCRs_min${MINREADS}copies_${sample}/
+              # plotLengthFreqMetrics_perSample.py
+              python ${DAME}plotLengthFreqMetrics_perSample.py -f FilteredReads.fna -p ${HOMEFOLDER}data/PSinfo_COI${sample}.txt -n 3
+done
+
+# 4.2.1 change header lines to sumaclust format, remove chimeras using vsearch
+
+# install gsed (gsed == GNU version of sed == Linux version of sed)
+# brew install gnu-sed
+
+# vsearch uchime version, a few seconds per library when applied to FilteredReads.forsumaclust.fna
+
+for sample in "${sample_libs[@]}"  # ${sample_libs[@]} is the full bash array: A,B,C. So loop over all samples
+do
+              cd ${HOMEFOLDER}data/seqs/folder${sample}/Filter_min${MINPCR}PCRs_min${MINREADS}copies_${sample}
+              python ${DAME}convertToUSearch.py -i FilteredReads.fna -lmin 300 -lmax 320
+              gsed 's/ count/;size/' FilteredReads.forsumaclust.fna > FilteredReads.forvsearch.fna
+              vsearch --sortbysize FilteredReads.forvsearch.fna --output FilteredReads.forvsearch_sorted.fna
+              vsearch --uchime_denovo FilteredReads.forvsearch_sorted.fna --nonchimeras FilteredReads.forvsearch_sorted_nochimeras.fna
+              gsed 's/;size/ count/' FilteredReads.forvsearch_sorted_nochimeras.fna > FilteredReads_${sample}.forsumaclust.nochimeras.fna
+done
+
+
+##########################################################################################################
+##########################################################################################################
+# Concatenation of files for each experiment
+##########################################################################################################
+##########################################################################################################
+
+# EXPERIMENT=ABC
+echo "The experiment is" ${EXPERIMENT}
+
+### ------------------------------------------------------------------------
+## Folder creation
+
+cd ${HOMEFOLDER}data/seqs
+
+# mkdir folder${EXPERIMENT} # Run only the first time
+mkdir folder${EXPERIMENT}/Filter_min${MINPCR}PCRs_min${MINREADS}copies_${EXPERIMENT}
+
+### ------------------------------------------------------------------------
+## Files placement in accordance to the analysis
+
+cd ${HOMEFOLDER}data/seqs/folderA/Filter_min${MINPCR}PCRs_min${MINREADS}copies_A
+cp FilteredReads_A.forsumaclust.nochimeras.fna ${HOMEFOLDER}data/seqs/folder${EXPERIMENT}/Filter_min${MINPCR}PCRs_min${MINREADS}copies_${EXPERIMENT}/
+cd ${HOMEFOLDER}data/seqs/folderB/Filter_min${MINPCR}PCRs_min${MINREADS}copies_B
+cp FilteredReads_B.forsumaclust.nochimeras.fna ${HOMEFOLDER}data/seqs/folder${EXPERIMENT}/Filter_min${MINPCR}PCRs_min${MINREADS}copies_${EXPERIMENT}/
+cd ${HOMEFOLDER}data/seqs/folderC/Filter_min${MINPCR}PCRs_min${MINREADS}copies_C
+cp FilteredReads_C.forsumaclust.nochimeras.fna ${HOMEFOLDER}data/seqs/folder${EXPERIMENT}/Filter_min${MINPCR}PCRs_min${MINREADS}copies_${EXPERIMENT}/
+cd ${HOMEFOLDER}data/seqs/folder${EXPERIMENT}/Filter_min${MINPCR}PCRs_min${MINREADS}copies_${EXPERIMENT}
+cat FilteredReads_*.forsumaclust.nochimeras.fna > FilteredReads_${EXPERIMENT}.forsumaclust.nochimeras.fna
+
+# N.B. ------------------------------------------------------------------------
+# Change the name of FilteredReads_* files in accordance to the EXPERIMENT setup
+
+
+### ------------------------------------------------------------------------
+## Sumaclust clustering
+
+echo ${SUMASIM} # confirm the similarity value
+
+cd ${HOMEFOLDER}data/seqs/folder${EXPERIMENT}/Filter_min${MINPCR}PCRs_min${MINREADS}copies_${EXPERIMENT}
+sumaclust -t .${SUMASIM} -e FilteredReads_${EXPERIMENT}.forsumaclust.nochimeras.fna > OTUs_${EXPERIMENT}_${SUMASIM}_sumaclust.fna
+python ${DAME}tabulateSumaclust.py -i OTUs_${EXPERIMENT}_${SUMASIM}_sumaclust.fna -o table_${EXPERIMENT}_${SUMASIM}.txt -blast
+mv table_${EXPERIMENT}_${SUMASIM}.txt.blast.txt table_${EXPERIMENT}_${SUMASIM}.fas
+
+### ------------------------------------------------------------------------
+## Alternative SWARM clustering
+
+cd /usr/local/bin
+git clone https://github.com/torognes/swarm.git
+make install swarm
+
+
+cd ${HOMEFOLDER}data/seqs/folder${EXPERIMENT}
+cat FilteredReads*.forvsearch_sorted_nochimeras.fna > FilteredReads_${EXPERIMENT}.forswarm.nochimeras.fna
+swarm -t 4 -d 13 -z -o swarm_standard_output_d13_${EXPERIMENT} -w OTUs_swarm_d13_${EXPERIMENT}.fas -u OTUs_swarm_d13_uclust_${EXPERIMENT} FilteredReads_${EXPERIMENT}.forswarm.nochimeras.fna #-d 13 threshold according to O. Wangensteen, personal communication
+
+### ------------------------------------------------------------------------
+## LULU matchfiles creation
+
+cd ${HOMEFOLDER}data/seqs/folderABC/Filter_min${MINPCR}PCRs_min${MINREADS}copies_${EXPERIMENT}
+vsearch --usearch_global table_${EXPERIMENT}_${SUMASIM}.fas --db table_${EXPERIMENT}_${SUMASIM}.fas --self --id .84 --iddef 1 --userout match_list_${EXPERIMENT}_${SUMASIM}.txt -userfields query+target+id --maxaccepts 0 --query_cov .9 --maxhits 10
+
+### ------------------------------------------------------------------------
+## File placement in accordance to the analysis
+
+cd ${HOMEFOLDER}${ANALYSIS}
+
+mkdir OTU_transient_results/
+mkdir OTU_transient_results/OTU_tables/
+
+mv ${HOMEFOLDER}${SEQS}/folder${EXPERIMENT}/Filter_min${MINPCR}PCRs_min${MINREADS}copies_${EXPERIMENT} ${HOMEFOLDER}${ANALYSIS}OTU_transient_results/OTU_tables/Filter_min${MINPCR}PCRs_min${MINREADS}copies_${EXPERIMENT}
+cd ${HOMEFOLDER}${ANALYSIS}OTU_transient_results/OTU_tables/Filter_min${MINPCR}PCRs_min${MINREADS}copies_${EXPERIMENT}
+cp table_${EXPERIMENT}_*.txt ${HOMEFOLDER}${ANALYSIS}OTU_transient_results/OTU_tables/ # copy OTU tables to OTU_tables folder
+cp table_${EXPERIMENT}_*.fas ${HOMEFOLDER}${ANALYSIS}OTU_transient_results/OTU_tables/ # copy OTU seqs to OTU_tables folder
+cp match_list_ABC_${SUMASIM}.txt ${HOMEFOLDER}${ANALYSIS}OTU_transient_results/OTU_tables/ # copy matchlist to OTU_tables folder
+
+mv ${HOMEFOLDER}${ANALYSIS}OTU_transient_results/ ${HOMEFOLDER}${ANALYSIS}OTUs_min${MINPCR}PCRs_min${MINREADS}copies_"$(date +%F_time-%H%M)"/
+
+OTUTABLEFOLDER="OTUs_min3PCRs_min3copies_2019-03-19_time-1058" # change name of the command manually in accordance to the previously renamed folder
+
+##########################################################################################################
+##########################################################################################################
+# Data handling and taxonomic assignment
+##########################################################################################################
+##########################################################################################################
+
+### ------------------------------------------------------------------------
+## LULU
+
+# 4.2.4.  Run LULU code here to collapse the OTU table
+
+Rscript --vanilla --verbose ${HOMEFOLDER}scripts/1.2_LULU.R ${OTUTABLEFOLDER}
+rm ${HOMEFOLDER}${ANALYSIS}${OTUTABLEFOLDER}/OTU_tables/lulu.log_*
+
+cd ${HOMEFOLDER}${ANALYSIS}${OTUTABLEFOLDER}/OTU_tables
+seqtk subseq table_${EXPERIMENT}_${SUMASIM}.fas <(cut -f 1 table_${EXPERIMENT}_${SUMASIM}_lulu.txt) > table_${EXPERIMENT}_${SUMASIM}_lulu.fas
+
+### ------------------------------------------------------------------------
+## MIDORI RDP taxonomic assignment
+
+# Upload manually the lulu.fas file to reference-midori server to do taxonomic assignment with midori http://www.reference-midori.info/
+
+# Parameter UNIQUE / COI / 0.8
+
+# Download the RDP output files back to the OTU_tables folder=
+
+# Rename manually properly following table_*_97.RDPmidori_lulu.txt
+
+### ------------------------------------------------------------------------
+## BOLD taxonomic assignment
+# Create subfiles to run the R script using BOLD taxonomic assignment
+
+cd ${HOMEFOLDER}${ANALYSIS}${OTUTABLEFOLDER}/OTU_tables
+
+mkdir BOLD/
+
+gsplit -l 200 --additional-suffix=.fas table_${EXPERIMENT}_${SUMASIM}_lulu.fas ${HOMEFOLDER}${ANALYSIS}${OTUTABLEFOLDER}/OTU_tables/BOLD/table_BOLD_${EXPERIMENT}_${SUMASIM}_lulu_ # split large fas. file in smaller ones of 100 sequences. -2 allows to read the file twice to lower memory usage
+
+# cd ${HOMEFOLDER}${ANALYSIS}${OTUTABLEFOLDER}/OTU_tables/table_${EXPERIMENT}_${SUMASIM}_lulu.fas.split
+# ls ${HOMEFOLDER}${ANALYSIS}${OTUTABLEFOLDER}/OTU_tables/table_${EXPERIMENT}_${SUMASIM}_lulu.fas.split > list_subset_fasta.txt
+
+
+### ------------------------------------------------------------------------
+## Taxonomic filtering
+
+# 4.2.5. Filter out non-Arthropoda from RDP assignment table.  Keep only Arthropoda with prob >= ARTHMINPROB (set to 0.80)
+
+# Filter out non-Arthropoda OTUs from OTU representative sequences fasta file
+
+cd ${HOMEFOLDER}${ANALYSIS}/${OTUTABLEFOLDER}/OTU_tables
+awk -v arthmin=${ARTHMINPROB} '$8 ~ /Arthropoda/ && $10 >= arthmin { print }' table_${EXPERIMENT}_97.RDPmidori_lulu.txt > table_${EXPERIMENT}_97.RDPmidori_Arthropoda.txt
+gsed -E 's/\t\t/\t/' table_${EXPERIMENT}_97.RDPmidori_Arthropoda.txt > table_${EXPERIMENT}_97.RDPmidori_Arthropoda_nodbltab.txt
+mv table_${EXPERIMENT}_97.RDPmidori_Arthropoda_nodbltab.txt table_${EXPERIMENT}_97.RDPmidori_Arthropoda.txt
+seqtk subseq table_${EXPERIMENT}_97.fas <(cut -f 1 table_${EXPERIMENT}_97.RDPmidori_Arthropoda.txt) > table_${EXPERIMENT}_97_Arthropoda.fas
+
+### ------------------------------------------------------------------------
+## OTU number checking
+
+# 4.2.6. checking that the right number of OTUs has been removed from each file
+
+echo "OTU tables"
+wc -l table_${EXPERIMENT}_97.RDPmidori_lulu.txt
+wc -l table_${EXPERIMENT}_97.RDPmidori_Arthropoda.txt
+echo "fasta files"
+grep ">" table_${EXPERIMENT}_97_lulu.fas | wc -l
+grep ">" table_${EXPERIMENT}_97_Arthropoda.fas | wc -l
+
+### ------------------------------------------------------------------------
+## BLAST against Positive control (PC)
+
+# 4.2.7. BLAST against positive control to check the OTU representativity
+
+# OTUTABLEFOLDER="OTUs_min2PCRs_min24copies_2018-11-13_time-1501"
+echo ${OTUTABLEFOLDER} # confirm pathway
+
+Rscript --vanilla --verbose ${HOMEFOLDER}scripts/1.3_PC_Check.R ${OTUTABLEFOLDER}
+
+cd ${HOMEFOLDER}/data/MTB
+makeblastdb -in MTB_AllInputRefSeqs_20180928.fasta -dbtype nucl # make the MTB ref dataset BLASTABLE
+
+# EXPERIMENT=ABC
+echo "The experiment is" ${EXPERIMENT}
+
+# SUMASIM=97
+echo "Sumaclust similarity percentage is" ${SUMASIM}"%." # confirm the similarity value
+
+cd ${HOMEFOLDER}/analysis/${OTUTABLEFOLDER}/OTU_tables
+grep -A1 -w -f PC_OTU_${EXPERIMENT}_97.txt table_${EXPERIMENT}_${SUMASIM}_Arthropoda.fas > PC_OTU_${EXPERIMENT}_${SUMASIM}.fas # Transform .txt on .fas without line -- separators
+sed '/^--/d' PC_OTU_${EXPERIMENT}_${SUMASIM}.fas > PC_OTU_${EXPERIMENT}_${SUMASIM}_CURATED.fas
+mv PC_OTU_${EXPERIMENT}_${SUMASIM}_CURATED.fas PC_OTU_${EXPERIMENT}_${SUMASIM}.fas
+
+# Take the top hit from blast output. visual inspection of the blast hits with similarity < 0.98 shows that the low-similarity hits are echo OTUs (there is already an OTU that hits the MTB sequence at ~100% similarity)
+
+cd ${HOMEFOLDER}/data/MTB
+blastn -db ${HOMEFOLDER}/data/MTB/MTB_AllInputRefSeqs_20180928.fasta -query ${HOMEFOLDER}/analysis/${OTUTABLEFOLDER}/OTU_tables/PC_OTU_${EXPERIMENT}_${SUMASIM}.fas -num_threads 3 -evalue 1e-10 -max_target_seqs 1 -outfmt 6 -out PC_OTU_filter_min${MINPCR}PCRs_min${MINREADS}copies_${EXPERIMENT}_${SUMASIM}_Arthropoda.blastnMTB.txt
+
+# Check for number of perfect matches and false positives and change DAMe parameters in accordance
+
+##### ------------------------------------------------------------------------
+### End of Data curation
+exit
